@@ -3,6 +3,12 @@
 Thanks for helping build Anokos. This project accepts public contributions through GitHub pull
 requests.
 
+**A note on AI:** so far, all work on Anokos has been done by an AI (a large language model) under
+the maintainer's direction. Human contributions are wanted and valued far more, whether that's code,
+testing on real hardware, reviews, bug reports or documentation. Contributions written with AI help
+are welcome too; please review and test them as carefully as your own work, and mention it in your
+pull request.
+
 ## Workflow
 
 1. Fork the repository and create a branch from `main` (`feature/short-name` or `fix/short-name`).
@@ -23,7 +29,7 @@ the TerryC rename (milestone 1) will touch most files in `src/`.
 
 ## Building and testing
 
-See [Building and running](README.md#building-and-running). In short:
+See [BUILDING.md](BUILDING.md). In short:
 
 - Changes outside `src/Kernel/` and `src/Compiler/` are compiled at boot, so
   `python tools/anokos_build.py iso` followed by `python tools/anokos_build.py run` is enough.

@@ -8,6 +8,9 @@
 <meta property="og:title" content="Anokos">
 <meta property="og:description" content="An open-source operating system descended from TempleOS, built in the open on GitHub.">
 <meta property="og:image" content="assets/anokos-terminal.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -34,7 +37,13 @@
   header { position: sticky; top: 0; z-index: 10; background: rgba(0, 0, 0, 0.82);
     backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
   nav { display: flex; align-items: center; gap: 24px; height: 60px; }
-  .logo { font-family: var(--mono); font-weight: 600; font-size: 18px; text-decoration: none; letter-spacing: 0.02em; }
+  .logo { font-family: var(--mono); font-weight: 600; font-size: 18px; text-decoration: none; letter-spacing: 0.02em;
+    display: inline-flex; align-items: center; gap: 10px; }
+  .logo img { width: 30px; height: 30px; }
+  .hero-logo { display: block; width: 132px; height: 132px; margin-bottom: 22px; }
+  .ai-note { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 16px 18px;
+    color: var(--muted); font-size: 15px; max-width: 680px; margin: 0 0 28px; }
+  .ai-note b { color: var(--text); }
   .logo::after { content: ""; display: inline-block; width: 0.55em; height: 1em; background: var(--text);
     margin-left: 4px; vertical-align: -0.15em; animation: blink 1.1s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
@@ -118,7 +127,7 @@
 <header>
   <div class="wrap">
     <nav>
-      <a class="logo" href="./">Anokos</a>
+      <a class="logo" href="./"><img src="assets/favicon-64.png" alt="" width="30" height="30">Anokos</a>
       <div class="navlinks">
         <a class="hide-sm" href="#about">About</a>
         <a class="hide-sm" href="#roadmap">Roadmap</a>
@@ -132,6 +141,7 @@
 
 <main>
   <div class="wrap hero">
+    <img class="hero-logo" src="assets/logo.png" width="132" height="132" alt="Anokos logo: a steaming bowl of chili">
     <div class="eyebrow">Open-source operating system</div>
     <h1>A simple, open operating system, built in public.</h1>
     <p class="lede">Anokos is a community-developed operating system descended from TempleOS. It boots straight
@@ -249,6 +259,9 @@ cd Anokos</pre></div></div>
       <p class="section-lede">Anokos welcomes contributions of every size, from fixing a typo to porting the kernel.
         Read the <a href="https://github.com/LandonDevAnokos/Anokos/blob/main/CONTRIBUTING.md">contributing guide</a>,
         pick something from the roadmap, and open a pull request.</p>
+      <p class="ai-note"><b>AI notice:</b> All work on Anokos so far, including the code, tools, documentation and
+        this website, has been done by an AI (a large language model) under the direction of the project's maintainer.
+        Human contributions are wanted and appreciated far more.</p>
       <div class="actions">
         <a class="btn primary" href="https://github.com/LandonDevAnokos/Anokos/issues">Browse issues</a>
         <a class="btn secondary" href="https://github.com/LandonDevAnokos/Anokos/blob/main/CONTRIBUTING.md">Contributing guide</a>
