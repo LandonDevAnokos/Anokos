@@ -470,6 +470,7 @@ class CKernel
 #define RLf_ADAM_SERVER		18
 #define RLf_ONCE_ADAM		19
 #define RLf_ONCE_USER		20
+#define RLf_VBE			21 //Anokos: VBE linear framebuffer is up
 
 #define RLF_16BIT		0x000001
 #define RLF_VGA			0x000002
@@ -492,6 +493,7 @@ class CKernel
 #define RLF_ADAM_SERVER		0x040000
 #define RLF_ONCE_ADAM		0x080000
 #define RLF_ONCE_USER		0x100000
+#define RLF_VBE			0x200000
 
 #help_index "Processor"
 #define LAPIC_BASE		0xFEE00000
@@ -3548,6 +3550,35 @@ public class CTextGlbls
   U8	border_chars[16];
 };
 
+#help_index "Graphics/VBE"
+//Anokos: VBE linear framebuffer. KStart16 picks the mode.
+#define VBE_BUF_SEG		0x0100	//Real-mode scratch at 0x1000
+#define VBE_BUF_CTRL		0x000
+#define VBE_BUF_MODE		0x200
+#define VBE_BUF_EDID		0x300
+#define VBE_DFT_MAX_WIDTH	1920	//Used when the monitor has no EDID
+#define VBE_DFT_MAX_HEIGHT	1080
+
+class CVbeBootInfo
+{//Filled-in by real-mode boot code. See $LK,"SYS_VBE_INFO",A="FF:::/Kernel/KStart16.HC,SYS_VBE_INFO"$.
+  U16	mode,width,height,pitch,bpp,
+	pref_width,pref_height,pad;
+  U32	fb;
+  U32	pad2;
+};
+
+public class CVbeGlbls
+{//Anokos framebuffer console state.
+  U32	*fb;			//Framebuffer (uncached alias of phys addr)
+  I64	fb_phys,width,height,pitch,bpp,mode,
+	pref_width,pref_height,	//From monitor EDID, zero if unknown
+	scale,			//Font scale factor
+	cols,rows,		//Text grid in chars
+	raw_col;		//Raw (debug/boot) output position
+  U32	fg,bg;			//Raw output colors, 0xRRGGBB
+};
+
+#help_index "Char;Debugging/Raw Output;TextBase Layer/Char"
 #define FONT_WIDTH	8
 #define FONT_HEIGHT	8
 

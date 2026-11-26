@@ -52,6 +52,141 @@ GDT_TR_RING3:	DU8	MP_PROCESSORS_NUM*16 DUP(0);
 #assert $$-SYS_KERNEL==sizeof(CKernel)-sizeof(CBinFile)
 
 //************************************
+//Anokos: VESA BIOS Extensions linear framebuffer.
+//Filled in here in real mode, read by $LK,"SysGrInit",A="MN:SysGrInit"$().
+	ALIGN	4,OC_NOP
+SYS_VBE_INFO:: //See $LK,"CVbeBootInfo",A="MN:CVbeBootInfo"$.
+	DU8	sizeof(CVbeBootInfo) DUP (0);
+
+VBE_SET_MODE:: //Pick the monitor's native mode (EDID) or the largest one.
+//The assembler only does short conditional jumps in 16-bit code, so this
+//is split into small routines that bail out with RET.
+	PUSH	ES
+	PUSH	FS
+	MOV	AX,VBE_BUF_SEG
+	MOV	ES,AX
+	MOV	U32 ES:[VBE_BUF_CTRL],'VBE2'
+	MOV	DI,VBE_BUF_CTRL
+	MOV	AX,0x4F00	//Controller info, has the mode list
+	INT	0x10
+	CMP	AX,0x004F
+	JNE	@@90
+	CALL	VBE_EDID
+	MOV	SI,U16 ES:[VBE_BUF_CTRL+14]
+	MOV	AX,U16 ES:[VBE_BUF_CTRL+16]
+	MOV	FS,AX
+@@20:	MOV	CX,U16 FS:[SI]
+	CMP	CX,-1	//0xFFFF ends the list (imm must be signed)
+	JZ	@@50
+	ADD	SI,2
+	PUSH	SI
+	CALL	VBE_CHECK_MODE
+	POP	SI
+	JMP	@@20
+@@50:	MOV	BX,U16 [SYS_VBE_INFO+CVbeBootInfo.mode]
+	TEST	BX,BX
+	JZ	@@90
+	OR	BX,0x4000	//Use linear framebuffer
+	MOV	AX,0x4F02
+	INT	0x10
+	CMP	AX,0x004F
+	JNE	@@90
+	BTS	U32 [SYS_RUN_LEVEL],RLf_VBE
+@@90:	POP	FS
+	POP	ES
+	RET
+
+VBE_EDID:: //Read monitor's preferred (native) size, set mode limits.
+	MOV	U16 [VBE_LIMIT_W],VBE_DFT_MAX_WIDTH
+	MOV	U16 [VBE_LIMIT_H],VBE_DFT_MAX_HEIGHT
+	MOV	AX,0x4F15
+	MOV	BX,0x0001
+	XOR	CX,CX
+	XOR	DX,DX
+	MOV	DI,VBE_BUF_EDID
+	INT	0x10
+	CMP	AX,0x004F
+	JZ	@@05
+	RET
+@@05:	CMP	U32 ES:[VBE_BUF_EDID+4],0x00FFFFFF //Header 00 FF FF FF FF FF FF 00
+	JZ	@@10
+	RET
+@@10:	MOV	AX,U16 ES:[VBE_BUF_EDID+54] //Pixel clock, zero if not a timing
+	TEST	AX,AX
+	JNZ	@@15
+	RET
+@@15:	XOR	AX,AX
+	MOV	AL,U8 ES:[VBE_BUF_EDID+58]
+	SHR	AX,4
+	SHL	AX,8
+	MOV	AL,U8 ES:[VBE_BUF_EDID+56]
+	MOV	BX,AX		//Horizontal active pixels
+	XOR	AX,AX
+	MOV	AL,U8 ES:[VBE_BUF_EDID+61]
+	SHR	AX,4
+	SHL	AX,8
+	MOV	AL,U8 ES:[VBE_BUF_EDID+59] //Vertical active lines
+	TEST	BX,BX
+	JNZ	@@20
+	RET
+@@20:	TEST	AX,AX
+	JNZ	@@25
+	RET
+@@25:	MOV	U16 [SYS_VBE_INFO+CVbeBootInfo.pref_width],BX
+	MOV	U16 [SYS_VBE_INFO+CVbeBootInfo.pref_height],AX
+	MOV	U16 [VBE_LIMIT_W],BX
+	MOV	U16 [VBE_LIMIT_H],AX
+	RET
+
+VBE_CHECK_MODE:: //CX=mode. Keep it if it's the biggest 32-bit LFB mode so far.
+	PUSH	CX
+	MOV	AX,0x4F01
+	MOV	DI,VBE_BUF_MODE
+	INT	0x10
+	POP	CX
+	CMP	AX,0x004F
+	JZ	@@05
+	RET
+@@05:	MOV	AX,U16 ES:[VBE_BUF_MODE]	//Supported, graphics, linear framebuffer
+	AND	AX,0x0091
+	CMP	AX,0x0091
+	JZ	@@10
+	RET
+@@10:	CMP	U8 ES:[VBE_BUF_MODE+25],32	//Bits per pixel
+	JZ	@@15
+	RET
+@@15:	CMP	U8 ES:[VBE_BUF_MODE+27],6	//Direct color
+	JZ	@@20
+	RET
+@@20:	MOV	BX,U16 ES:[VBE_BUF_MODE+18]	//Width
+	MOV	DX,U16 ES:[VBE_BUF_MODE+20]	//Height
+	CMP	U16 [VBE_LIMIT_W],BX
+	JNC	@@25
+	RET
+@@25:	CMP	U16 [VBE_LIMIT_H],DX
+	JNC	@@30
+	RET
+@@30:	CMP	U16 [SYS_VBE_INFO+CVbeBootInfo.width],BX
+	JC	@@40
+	JZ	@@35
+	RET
+@@35:	CMP	U16 [SYS_VBE_INFO+CVbeBootInfo.height],DX
+	JC	@@40
+	RET
+@@40:	MOV	U16 [SYS_VBE_INFO+CVbeBootInfo.mode],CX
+	MOV	U16 [SYS_VBE_INFO+CVbeBootInfo.width],BX
+	MOV	U16 [SYS_VBE_INFO+CVbeBootInfo.height],DX
+	MOV	AX,U16 ES:[VBE_BUF_MODE+16]	//Bytes per scan line
+	MOV	U16 [SYS_VBE_INFO+CVbeBootInfo.pitch],AX
+	MOV	U16 [SYS_VBE_INFO+CVbeBootInfo.bpp],32
+	MOV	EAX,U32 ES:[VBE_BUF_MODE+40]	//Physical framebuffer addr
+	MOV	U32 [SYS_VBE_INFO+CVbeBootInfo.fb],EAX
+	RET
+
+VBE_LIMIT_W:	DU16	0;
+VBE_LIMIT_H:	DU16	0;
+
+//************************************
 CORE0_16BIT_INIT::
 //EAX is $LK,"SYS_BOOT_SRC",A="FF:::/Kernel/KStart16.HC,[SYS_BOOT_SRC]"$. (Val passed from boot blk, $LK,"BootHD",A="FF:::/Adam/Opt/Boot/BootHD.HC,BOOT_SRC_HARDDRV"$, $LK,"BootDVD",A="FF:::/Adam/Opt/Boot/BootDVD.HC,BOOT_SRC_DVD"$, & $LK,"BootRAM",A="FF:::/Adam/Opt/Boot/BootRAM.HC,BOOT_SRC_RAM"$.)
 	MOV	ECX,EAX
@@ -77,8 +212,15 @@ GET_RIP:	POP	BX
 
 	MOV	U32 [SYS_RUN_LEVEL],RLF_16BIT
 
+#exe {
+  if (!kernel_cfg->opts[CFG_TEXT_MODE])
+    StreamPrint("CALL VBE_SET_MODE");	//Anokos: native-res framebuffer
+};
+	BT	U32 [SYS_RUN_LEVEL],RLf_VBE
+	JC	@@10		//Jmp if VBE framebuffer is up
+
 	MOV	AX,0x4F02
-	MOV	BX,0x12		//640x480 16 color
+	MOV	BX,0x12		//Fallback: 640x480 16 color
 #exe {
   if (!kernel_cfg->opts[CFG_TEXT_MODE])
     StreamPrint("INT 0x10");	//Enable VGA

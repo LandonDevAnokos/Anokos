@@ -1,3 +1,79 @@
+//Anokos: VBE linear framebuffer raw console.
+//The kernel uses this for boot and debugger output. The Anokos
+//terminal ($LK,"::/Anokos/Term.HC"$) draws its own text on top.
+
+U0 VbeDrawChar(I64 col,I64 row,I64 ch,U32 fg,U32 bg)
+{//Draw one font char cell, scaled by vbe.scale.
+  I64 i,j,k,s=vbe.scale,stride=vbe.pitch>>2;
+  U8 bits;
+  U32 *dst,*d;
+  if (!vbe.fb || col<0 || row<0 || col>=vbe.cols || row>=vbe.rows)
+    return;
+  dst=vbe.fb+row*FONT_HEIGHT*s*stride+col*FONT_WIDTH*s;
+  for (i=0;i<FONT_HEIGHT;i++) {
+    bits=text.font[ch&255].u8[i];
+    for (k=0;k<s;k++) {
+      d=dst;
+      for (j=0;j<FONT_WIDTH;j++) {
+	if (Bt(&bits,j))
+	  MemSetU32(d,fg,s);
+	else
+	  MemSetU32(d,bg,s);
+	d+=s;
+      }
+      dst+=stride;
+    }
+  }
+}
+
+U0 VbeRawCls()
+{//Clear framebuffer and home the raw cursor.
+  I64 i;
+  if (!vbe.fb) return;
+  for (i=0;i<vbe.height;i++)
+    MemSetU32(vbe.fb(U8 *)+i*vbe.pitch,vbe.bg,vbe.width);
+  vbe.raw_col=0;
+}
+
+U0 VbeRawScroll()
+{
+  I64 line=FONT_HEIGHT*vbe.scale*vbe.pitch,i;
+  MemCpy(vbe.fb,vbe.fb(U8 *)+line,line*(vbe.rows-1));
+  for (i=0;i<FONT_HEIGHT*vbe.scale;i++)
+    MemSetU32(vbe.fb(U8 *)+line*(vbe.rows-1)+i*vbe.pitch,vbe.bg,vbe.width);
+}
+
+U0 VbeRawPutChar(I64 ch)
+{
+  I64 row,col;
+  if (ch=='	') {
+    do VbeRawPutChar(CH_SPACE);
+    while (vbe.raw_col&7);
+  } else if (ch==CH_BACKSPACE) {
+    if (vbe.raw_col>0) {
+      vbe.raw_col--;
+      VbeDrawChar(vbe.raw_col%vbe.cols,vbe.raw_col/vbe.cols,
+	    CH_SPACE,vbe.fg,vbe.bg);
+    }
+  } else if (ch=='
+') {
+    vbe.raw_col+=vbe.cols-vbe.raw_col%vbe.cols;
+    if (vbe.raw_col>=vbe.cols*vbe.rows) {
+      VbeRawScroll;
+      vbe.raw_col-=vbe.cols;
+    }
+  } else if (Bt(char_bmp_displayable,ch)) {
+    if (vbe.raw_col>=vbe.cols*vbe.rows) {
+      VbeRawScroll;
+      vbe.raw_col-=vbe.cols;
+    }
+    row=vbe.raw_col/vbe.cols;
+    col=vbe.raw_col%vbe.cols;
+    VbeDrawChar(col,row,ch,vbe.fg,vbe.bg);
+    vbe.raw_col++;
+  }
+}
+
 U0 RawPutChar(I64 ch)
 {/*For RAW output during boot and in debugger.
 
@@ -25,6 +101,13 @@ See also $LK,"GrUpdateScrn",A="MN:GrUpdateScrn"$().
     text.raw_flags&=~RWF_LAST_DOLLAR;
     if (text.raw_flags&RWF_IN_DOLLAR)
       return;
+  }
+  if (Bt(&sys_run_level,RLf_VBE)) {
+    PUSHFD
+    CLI
+    VbeRawPutChar(ch);
+    POPFD
+    return;
   }
   if (ch=='\t') {
     RawPutChar(CH_SPACE);

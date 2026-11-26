@@ -68,7 +68,35 @@ U0 SysGrInit()
   text.aux_font=sys_font_cyrillic;
   text.vga_alias	=dev.uncached_alias+VGAM_GRAPHICS;
   text.vga_text_alias	=dev.uncached_alias+VGAM_TEXT;
-  if (!Bt(&sys_run_level,RLf_VGA)) { //if text mode
+  if (Bt(&sys_run_level,RLf_VBE)) { //Anokos: native-res framebuffer
+    vbe.fb_phys	=sys_vbe_info.fb;
+//Use the cacheable identity mapping when the framebuffer is inside it;
+//the firmware's MTRRs keep video memory uncached or write-combining on
+//real hardware. Otherwise use the uncached alias of the low 4 Gig.
+    if (vbe.fb_phys+vbe.pitch*sys_vbe_info.height<=dev.uncached_alias)
+      vbe.fb	=vbe.fb_phys;
+    else
+      vbe.fb	=dev.uncached_alias+vbe.fb_phys;
+    vbe.mode	=sys_vbe_info.mode;
+    vbe.width	=sys_vbe_info.width;
+    vbe.height	=sys_vbe_info.height;
+    vbe.pitch	=sys_vbe_info.pitch;
+    vbe.bpp	=sys_vbe_info.bpp;
+    vbe.pref_width =sys_vbe_info.pref_width;
+    vbe.pref_height=sys_vbe_info.pref_height;
+    vbe.scale	=MaxI64(1,vbe.height/400);
+    vbe.cols	=vbe.width/(FONT_WIDTH*vbe.scale);
+    vbe.rows	=vbe.height/(FONT_HEIGHT*vbe.scale);
+    vbe.fg	=0xFFFFFF;
+    vbe.bg	=0x000000;
+    VbeRawCls;
+//Legacy 640x480 text grid, kept for code that still sizes windows by it.
+    text.cols=GR_WIDTH/FONT_WIDTH;
+    text.rows=GR_HEIGHT/FONT_HEIGHT;
+    text.raw_scrn_image=CAlloc(GR_WIDTH*GR_HEIGHT/8);
+    text.border_chars[2] (I64)=0x0908070605040302;
+    text.border_chars[10](U32)=0x0D0C0B0A;
+  } else if (!Bt(&sys_run_level,RLf_VGA)) { //if text mode
     text.cols=80;
     text.rows=25;
     MemSet(text.vga_text_alias,0,text.rows*text.cols<<1);
@@ -157,8 +185,12 @@ U0 KMain()
   //Before this point use $LK,"Snd",A="MN:Snd"$() and $LK,"Busy",A="MN:Busy"$()
   //to debug.After this point, use $LK,"RawPrint",A="MN:RawPrint"$()
   LBts(&sys_run_level,RLf_RAW);
-  "TempleOS V%5.3f\t%D %T\n\n",
+  "Anokos (TempleOS V%5.3f base)\t%D %T\n",
 	sys_os_version,sys_compile_time,sys_compile_time;
+  if (Bt(&sys_run_level,RLf_VBE))
+    "Display: %dx%d (VBE mode 0x%X)\n\n",vbe.width,vbe.height,vbe.mode;
+  else
+    "Display: VBE unavailable, using VGA\n\n";
 
   TimersInit;
   if (BIOSTotalMem<ToI64(0.95*MEM_MIN_MEG*0x100000))

@@ -107,6 +107,9 @@ extern U8 *StrPrintHex(U8 *dst,I64 num;I64 width);
 
 #help_index "Char;Debugging/Raw Output;TextBase Layer/Char"
 public extern CTextGlbls text;
+public extern CVbeGlbls vbe;
+public extern U0 VbeRawCls();
+public extern U0 VbeDrawChar(I64 col,I64 row,I64 ch,U32 fg,U32 bg);
 
 #help_index "Compiler/Lex"
 public extern U0 HashSrcFileSet(CCmpCtrl *cc,

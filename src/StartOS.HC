@@ -16,22 +16,27 @@ Option(OPTf_WARN_DUP_TYPES,ON);
 HashTablePurge(adam_task->hash_table);
 
 #include "/Adam/MakeAdam"
+#include "/Anokos/MakeAnokos"
 
-//Dbg("Type 'G;'");
-DocTermNew;
-WinVert(2,10);
-
-sys_winmgr_task=Spawn(&WinMgrTask,NULL,"Window Mgr");
-Fs->win_inhibit=WIG_TASK_DFT-WIF_SELF_BORDER
+//Anokos boots to its own full-screen terminal ($LK,"AnoTermStart",A="MN:AnoTermStart"$)
+//when the kernel got a VBE framebuffer. Without one, fall back to
+//the TempleOS window manager and desktop.
+if (!Bt(&sys_run_level,RLf_VBE)) {
+  DocTermNew;
+  WinVert(2,10);
+  sys_winmgr_task=Spawn(&WinMgrTask,NULL,"Window Mgr");
+  Fs->win_inhibit=WIG_TASK_DFT-WIF_SELF_BORDER
 	-WIF_SELF_GRAB_SCROLL-WIF_SELF_CTRLS;
-LBts(&Fs->display_flags,DISPLAYf_CHILDREN_NOT_ON_TOP);
-LBts(&Fs->display_flags,DISPLAYf_SHOW);
+  LBts(&Fs->display_flags,DISPLAYf_CHILDREN_NOT_ON_TOP);
+  LBts(&Fs->display_flags,DISPLAYf_SHOW);
+}
 RegInit;
 LBts(&sys_run_level,RLf_REGISTRY);
 if (!ins_reg.registered)
   InsUnreg;
 
-WallPaperInit;
+if (!Bt(&sys_run_level,RLf_VBE))
+  WallPaperInit;
 
 if (DrvIsWritable)
   DirMk("/Tmp"); //Good to have a Tmp
@@ -42,5 +47,7 @@ LBts(&sys_run_level,RLf_HOME);
 
 #help_index ""
 #include "~/MakeHome"
+
+AnoTermStart;
 
 //After this file, the Adam task enters $LK,"server mode",A="HI:Job"$.

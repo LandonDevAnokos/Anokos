@@ -7,8 +7,8 @@ system written by Terry A. Davis.
 The goal is a community-developed OS anyone can use, study and contribute to, developed in the
 open on GitHub.
 
-> **Status:** early bootstrap. `src/` currently holds the unmodified TempleOS source as extracted
-> from the original ISO. Anokos-specific changes start from here.
+> **Status:** first bootable milestone. Anokos boots straight into its own full-screen terminal
+> (white text on black) at the display's native resolution, with no desktop environment.
 
 ## Repository layout
 
@@ -16,20 +16,21 @@ open on GitHub.
 | --- | --- |
 | [`src/`](src/) | The Anokos source tree (HolyC `.HC`/`.HH`, DolDoc `.DD`, data files). Starts as the full TempleOS tree. |
 | [`TempleOS/`](TempleOS/) | The original `TempleOS.ISO`, kept **byte-for-byte unmodified** as the reference upstream. Do not edit. |
-| [`tools/`](tools/) | Host-side tooling. `redsea_extract.py` extracts a RedSea-format ISO and expands its LZW `.Z` files. |
+| [`tools/`](tools/) | Host-side tooling: ISO extraction (`redsea_extract.py`), ISO building (`build_iso.py`) and the build driver (`anokos_build.py`). |
 
 ### Inside `src/`
 
 | Directory | What it is |
 | --- | --- |
-| `Kernel/` | Core kernel: memory, scheduler, interrupts, block devices, RedSea/FAT32 filesystems |
+| `Kernel/` | Core kernel: boot, VBE framebuffer, memory, scheduler, interrupts, block devices, RedSea/FAT32 filesystems |
+| `Anokos/` | The Anokos system layer: the full-screen terminal (`Term.HC`) |
 | `Compiler/` | The HolyC JIT/AOT compiler and assembler |
 | `Adam/` | The "Adam" system layer: window manager, DolDoc, graphics, sound, autocomplete, GUI controls |
 | `Apps/` | Bundled applications |
 | `Demo/` | Example and demo programs |
 | `Doc/` | System documentation (DolDoc format) |
 | `Misc/` | Miscellaneous data, including the OS install/build helpers |
-| `0000Boot/` | The prebuilt boot kernel binary from the ISO |
+| `0000Boot/` | The boot kernel binary, built from `Kernel/` by `tools/anokos_build.py` |
 | `Downloads/` | Helper files from the ISO (Linux-side tools, songs, etc.) |
 | `Home/`, `Tmp/` | User home and temp directories (Home is empty on the stock ISO) |
 
@@ -61,11 +62,42 @@ markup commands and sometimes a binary trailer holding embedded sprites/graphics
 configured (see `.gitattributes`) to store `src/` byte-exact, so don't let your editor
 "fix" line endings or strip those trailers.
 
-## Running it
+## Building and running
 
-Anokos is not bootable on its own yet. Until the build pipeline is in place, the stock system can
-be tried by booting `TempleOS/TempleOS.ISO` in a VM (QEMU, VirtualBox or VMware, x86-64, at least
-512 MB RAM).
+You need Python 3 and [VirtualBox](https://www.virtualbox.org/).
+
+```sh
+python tools/anokos_build.py all            # compile the kernel, then build build/Anokos.ISO
+python tools/anokos_build.py run            # boot build/Anokos.ISO in a VM and take a screenshot
+```
+
+Boot `build/Anokos.ISO` in any x86-64 VM or PC (BIOS/legacy boot, IDE/ATAPI CD drive, at
+least 512 MB RAM).
+
+### How the build works
+
+HolyC is only compiled by the HolyC compiler, which runs inside the OS itself, so the kernel is
+bootstrapped in a VM:
+
+1. **Stage 1** (`anokos_build.py kernel`): builds an ISO of stock TempleOS with `src/Kernel`
+   added, boots it headless in VirtualBox, compiles the Anokos kernel there and receives the
+   binary over the VM's serial port (`build/stage1_serial.log` has the full compiler output).
+   Add `--update-src` to copy the result into `src/0000Boot/` and `src/Kernel/Kernel.MAP`.
+2. **Stage 2** (`anokos_build.py iso`): writes `build/Anokos.ISO` from `src/` with the new kernel.
+
+Everything outside `Kernel/` and `Compiler/` (the Anokos layer, Adam, apps) is compiled
+just-in-time at boot, so changes there only need stage 2.
+
+### The Anokos terminal
+
+At boot the kernel asks the video BIOS (VBE) for the monitor's native resolution (from its EDID)
+and picks the largest 32-bit linear-framebuffer mode that fits; without EDID it uses the largest
+mode up to 1920x1080. If no such mode exists it falls back to the old 640x480 TempleOS desktop.
+
+The terminal runs the standard HolyC command line: type statements such as `Dir;` or
+`Cd("/Demo");`. It supports line editing (arrows, Home/End, Delete), command history (Up/Down),
+`Cls;` / Ctrl+L to clear and Ctrl+Alt+C to stop a running command. Programs that need the
+TempleOS window manager (the editor, games, graphics demos) don't work in this milestone.
 
 ## Contributing
 

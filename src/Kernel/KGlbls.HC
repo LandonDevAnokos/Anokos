@@ -28,6 +28,7 @@ CKeyDevGlbls	keydev;
 CMsHardStateGlbls ms_hard,ms_hard_last;
 CScrnCastGlbls	scrncast;
 CTextGlbls	text;
+CVbeGlbls	vbe; //Anokos framebuffer
 
 U8  *(*fp_getstr2)(I64 flags=0);
 U0 (*fp_update_ctrls)(CTask *task);
