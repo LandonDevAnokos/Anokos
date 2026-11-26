@@ -30,6 +30,8 @@ See [Building and running](README.md#building-and-running). In short:
 - If you change `src/Kernel/`, rebuild the kernel with
   `python tools/anokos_build.py all --update-src` and commit the regenerated
   `src/0000Boot/0000Kernel.BIN.C` and `src/Kernel/Kernel.MAP` along with your source change.
+- If you add, remove or rename functions, globals or classes, run `python tools/codemap.py` and
+  commit the updated `docs/code-map/codemap.json` so the website's code map stays current.
 - HolyC source files are DolDoc documents: write a literal `$` as `$$`. JIT-compiled globals
   start out as garbage, not zero, so initialize them explicitly.
 

@@ -11,6 +11,10 @@ open on GitHub. Anokos runs on x86-64 today, with ARM64 and PowerPC planned.
 > (white text on black) at the display's native resolution, with no desktop environment.
 > See the [roadmap](ROADMAP.md) for what comes next.
 
+**Website:** [landondevanokos.github.io/Anokos](https://landondevanokos.github.io/Anokos/), including a
+[3D code map](https://landondevanokos.github.io/Anokos/code-map/) of every function, variable and class in
+the source and how they connect.
+
 ## Roadmap
 
 Planned milestones, in order (details in [ROADMAP.md](ROADMAP.md)):
@@ -27,8 +31,9 @@ Planned milestones, in order (details in [ROADMAP.md](ROADMAP.md)):
 | --- | --- |
 | [`src/`](src/) | The Anokos source tree (HolyC `.HC`/`.HH`, DolDoc `.DD`, data files). Starts as the full TempleOS tree. |
 | [`TempleOS/`](TempleOS/) | The original `TempleOS.ISO`, kept **byte-for-byte unmodified** as the reference upstream. Do not edit. |
+| [`docs/`](docs/) | The project website, published with GitHub Pages, including the 3D code map. |
 | [`ROADMAP.md`](ROADMAP.md) | Planned milestones and the order they will be worked on. |
-| [`tools/`](tools/) | Host-side tooling: ISO extraction (`redsea_extract.py`), ISO building (`build_iso.py`) and the build driver (`anokos_build.py`). |
+| [`tools/`](tools/) | Host-side tooling: ISO extraction (`redsea_extract.py`), ISO building (`build_iso.py`), the build driver (`anokos_build.py`) and the code map generator (`codemap.py`). |
 
 ### Inside `src/`
 
@@ -110,6 +115,19 @@ The terminal runs the standard HolyC command line: type statements such as `Dir;
 `Cd("/Demo");`. It supports line editing (arrows, Home/End, Delete), command history (Up/Down),
 `Cls;` / Ctrl+L to clear and Ctrl+Alt+C to stop a running command. Programs that need the
 TempleOS window manager (the editor, games, graphics demos) don't work in this milestone.
+
+## Website and code map
+
+The website lives in [`docs/`](docs/) and is served by GitHub Pages from the `main` branch.
+The 3D code map reads `docs/code-map/codemap.json`, which is generated from `src/` by a fast
+approximate parser. Refresh it after changing the source:
+
+```sh
+python tools/codemap.py
+```
+
+To preview the site locally, serve the `docs/` folder, for example with
+`python -m http.server --directory docs`, and open `http://localhost:8000`.
 
 ## Contributing
 

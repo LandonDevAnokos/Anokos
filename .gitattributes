@@ -20,3 +20,8 @@ src/Demo/WebLogDemo/*.log linguist-vendored
 tools/** text eol=lf
 *.md text eol=lf
 LICENSE text eol=lf
+
+# Website
+docs/**/*.html text eol=lf
+docs/**/*.json text eol=lf
+docs/**/*.png binary
