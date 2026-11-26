@@ -3,148 +3,143 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Anokos Code Map</title>
-<meta name="description" content="Explore every function, variable and class in the Anokos source code in 3D, and how they connect.">
+<title>Anokos Code City</title>
+<meta name="description" content="Fly over the complete Anokos source code as a city: every folder is a block, every file a building, and you can zoom in far enough to read every line.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #000;
-    --panel: rgba(12, 12, 14, 0.88);
-    --border: #2a2a2e;
-    --text: #f2f2f2;
-    --muted: #9a9aa2;
-    --faint: #5c5c64;
-    --accent: #ffffff;
+    --bg: #08090b;
+    --panel: #111317;
+    --panel-2: #0c0d10;
+    --border: #24272d;
+    --text: #e9eaec;
+    --muted: #9ea3ab;
+    --faint: #626872;
+    --hit: #ffd54f;
     --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
     --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --k-file: #ffffff;
-    --k-function: #4fc3f7;
-    --k-global: #ffd54f;
-    --k-class: #ce93d8;
-    --k-define: #78909c;
-    --k-asm: #ff8a65;
+    --side: 380px;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-    font-family: var(--sans); font-size: 14px; overflow: hidden; }
-  a { color: var(--text); }
-  #scene { position: fixed; inset: 0; }
-  #scene canvas { display: block; touch-action: none; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); overflow: hidden; }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; }
 
-  .panel { position: fixed; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 2; }
+  #app { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr var(--side); grid-template-rows: 44px 1fr; }
+  #topbar { grid-column: 1 / 3; display: flex; align-items: center; gap: 14px; padding: 0 14px;
+    background: var(--panel); border-bottom: 1px solid var(--border); min-width: 0; }
+  #topbar h1 { margin: 0; font: 600 14px var(--mono); white-space: nowrap; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .seg button { background: none; border: 0; padding: 4px 11px; cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  .seg button.on { background: #24272d; color: var(--text); }
+  .toplinks { margin-left: auto; display: flex; gap: 14px; font-size: 12.5px; white-space: nowrap; }
+  .toplinks a { color: var(--muted); text-decoration: none; }
+  .toplinks a:hover { color: var(--text); }
+  #stats { color: var(--faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  #left { top: 16px; left: 16px; width: 300px; padding: 14px; max-height: calc(100% - 32px);
-    display: flex; flex-direction: column; gap: 12px; }
-  .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-  .brand h1 { margin: 0; font-family: var(--mono); font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
-  .brand a { font-size: 12px; color: var(--muted); text-decoration: none; }
-  .brand a:hover { color: var(--text); }
-  .stats { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  #view { position: relative; overflow: hidden; min-width: 0; }
+  #view canvas { display: block; touch-action: none; }
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .lbl { position: absolute; top: 0; left: 0; font: 600 11.5px var(--mono); color: #f2f2f2; white-space: nowrap;
+    text-shadow: 0 0 3px #000, 0 0 2px #000, 0 0 1px #000; will-change: transform; pointer-events: none; }
+  .lbl.file { font-weight: 400; color: #d5d8dc; font-size: 11px; background: rgba(16, 18, 22, 0.82); padding: 0 4px; border-radius: 3px; }
+  #crumb { position: absolute; left: 10px; bottom: 8px; font: 12px var(--mono); color: var(--muted);
+    background: rgba(8, 9, 11, 0.8); padding: 3px 8px; border-radius: 6px; pointer-events: none; max-width: calc(100% - 20px);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #tip { position: absolute; pointer-events: none; display: none; background: #0c0d10; border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 9px; max-width: 520px; font-size: 12px; z-index: 3; }
+  #tip .path { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+  #tip pre { margin: 4px 0 0; font: 12px var(--mono); color: var(--text); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); color: var(--muted);
+    font: 13px var(--mono); z-index: 5; }
 
-  .search { position: relative; }
-  .search input { width: 100%; padding: 9px 11px; background: #0a0a0c; color: var(--text);
-    border: 1px solid var(--border); border-radius: 7px; font: 13px var(--mono); outline: none; }
-  .search input:focus { border-color: #55555c; }
-  #results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; list-style: none; margin: 0;
-    padding: 4px; background: #0c0c0e; border: 1px solid var(--border); border-radius: 7px;
-    max-height: 320px; overflow-y: auto; display: none; z-index: 3; }
-  #results li { padding: 6px 8px; border-radius: 5px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
-  #results li.active, #results li:hover { background: #1c1c20; }
-  #results .rname { font-family: var(--mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #results .rfile { color: var(--faint); font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
-
-  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 6px; }
-  .kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-  .kinds label, .toggle { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 13px; user-select: none; }
-  .kinds input, .toggle input { accent-color: #ddd; margin: 0; }
-  .swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-  .kinds .n { color: var(--faint); font-size: 11px; margin-left: auto; }
-  .hint { color: var(--faint); font-size: 11.5px; line-height: 1.5; }
-
-  #details { top: 16px; right: 16px; width: 360px; max-height: calc(100% - 32px); overflow-y: auto;
-    padding: 16px; display: none; }
-  #details .close { position: absolute; top: 10px; right: 10px; background: none; border: 0; color: var(--muted);
-    font-size: 18px; cursor: pointer; padding: 4px 8px; }
-  #details .close:hover { color: var(--text); }
-  .d-kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 6px; }
-  .d-name { font-family: var(--mono); font-size: 17px; font-weight: 600; margin: 6px 0 4px; word-break: break-all; padding-right: 24px; }
-  .d-loc { font-size: 12px; color: var(--muted); }
-  .d-loc a { color: var(--muted); }
-  .d-loc a:hover { color: var(--text); }
-  .d-sig { font-family: var(--mono); font-size: 12px; background: #0a0a0c; border: 1px solid var(--border);
-    border-radius: 6px; padding: 8px 10px; margin: 10px 0 4px; white-space: pre-wrap; word-break: break-word; color: #d6d6d6; }
-  .group { margin-top: 14px; }
-  .group h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); font-weight: 600; }
+  #side { background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .search { padding: 10px; border-bottom: 1px solid var(--border); }
+  .search input { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel-2);
+    color: var(--text); font: 13px var(--mono); outline: none; }
+  .search input:focus { border-color: #4a4f58; }
+  .tabs { display: flex; gap: 2px; padding: 6px 10px 0; border-bottom: 1px solid var(--border); }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 10px; color: var(--muted); cursor: pointer; font-size: 12.5px; }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--text); }
+  .pane { flex: 1; overflow-y: auto; padding: 12px; display: none; min-height: 0; }
+  .pane.on { display: block; }
+  .empty { color: var(--faint); line-height: 1.6; }
+  .empty kbd { font: 11px var(--mono); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+  h2 { margin: 0 0 2px; font: 600 15px var(--mono); word-break: break-all; }
+  h3 { margin: 14px 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); }
+  .sub { color: var(--muted); font-size: 12px; }
+  .sub a { color: var(--muted); }
+  .code { font: 12px/1.5 var(--mono); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 0; margin-top: 8px; overflow-x: auto; white-space: pre; }
+  .code div { padding: 0 10px; }
+  .code .cur { background: rgba(255, 213, 79, 0.14); }
+  .code .ln { color: var(--faint); display: inline-block; min-width: 3.5em; user-select: none; }
+  .row { display: flex; gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 5px; cursor: pointer; font: 12px var(--mono); }
+  .row:hover, .row.on { background: #1c1f24; }
+  .row .ln { color: var(--faint); min-width: 3.2em; text-align: right; flex: none; }
+  .row .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d5d8dc; }
+  .row .tag { margin-left: auto; color: var(--faint); font-size: 11px; white-space: nowrap; padding-left: 6px; }
+  .filehead { font: 11.5px var(--mono); color: var(--muted); margin: 10px 6px 2px; word-break: break-all; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip { font-family: var(--mono); font-size: 11.5px; padding: 3px 7px; border-radius: 5px; background: #16161a;
-    border: 1px solid #222227; color: #dcdcdc; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
-  .chip:hover { border-color: #46464e; }
-  .chip.plain { cursor: default; }
-  .chip .ln { color: var(--faint); font-size: 10.5px; }
-  .more { font-size: 11.5px; color: var(--faint); padding: 3px 2px; }
+  .chip { font: 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; background: #1a1d22; border: 1px solid #262a30;
+    cursor: pointer; color: #dadde1; }
+  .chip:hover { border-color: #4a4f58; }
+  .more { color: var(--faint); font-size: 11.5px; padding: 2px 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  #toggle-side { display: none; }
 
-  #tooltip { position: fixed; pointer-events: none; z-index: 4; background: #0c0c0e; border: 1px solid var(--border);
-    border-radius: 6px; padding: 5px 8px; font-size: 12px; display: none; max-width: 340px; }
-  #tooltip b { font-family: var(--mono); font-weight: 600; }
-  #tooltip span { color: var(--muted); }
-
-  .label { font-family: var(--mono); color: #e8e8e8; pointer-events: auto; cursor: pointer; white-space: nowrap;
-    text-shadow: 0 0 6px #000, 0 0 2px #000; user-select: none; }
-  .label.top { font-size: 15px; font-weight: 600; letter-spacing: 0.04em; }
-  .label.dir { font-size: 11.5px; color: #b8b8be; }
-  .label:hover { color: #fff; }
-
-  #loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 5; font-family: var(--mono);
-    color: var(--muted); background: var(--bg); }
-
-  #toggle-left { display: none; }
-
-  @media (max-width: 760px) {
-    #left { top: 10px; left: 10px; right: 10px; width: auto; padding: 10px; gap: 8px; max-height: 60%; }
-    #left .collapsible { display: none; }
-    #left.open .collapsible { display: block; }
-    #toggle-left { display: inline-block; background: none; border: 1px solid var(--border); color: var(--muted);
-      border-radius: 6px; font-size: 12px; padding: 3px 8px; cursor: pointer; }
-    #details { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; max-height: 48%; }
-    .label.dir { display: none; }
+  @media (max-width: 820px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 44px 1fr auto; }
+    #topbar { grid-column: 1; }
+    #stats, .toplinks .hide-sm { display: none; }
+    #side { border-left: 0; border-top: 1px solid var(--border); max-height: 46vh; }
+    #side.collapsed .tabs, #side.collapsed .pane { display: none; }
+    #toggle-side { display: inline-block; background: none; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px;
+      color: var(--muted); font-size: 12px; margin-left: 8px; }
+    .search { display: flex; align-items: center; }
   }
 </style>
 </head>
 <body>
-<div id="scene"></div>
-<div id="loading">Loading the Anokos source map...</div>
-
-<aside id="left" class="panel">
-  <div class="brand">
-    <h1>Anokos Code Map</h1>
-    <span><button id="toggle-left" type="button">Filters</button> <a href="../">Home</a></span>
-  </div>
-  <div class="search">
-    <input id="search" type="search" placeholder="Search functions, variables, classes..." autocomplete="off" spellcheck="false" aria-label="Search symbols">
-    <ul id="results" role="listbox"></ul>
-  </div>
-  <div class="collapsible">
-    <div class="stats" id="stats"></div>
-  </div>
-  <div class="collapsible">
-    <div class="section-title">Show</div>
-    <div class="kinds" id="kinds"></div>
-  </div>
-  <div class="collapsible">
-    <div class="section-title">Connections</div>
-    <label class="toggle"><input type="checkbox" id="all-edges"> Show all connections</label>
-  </div>
-  <div class="collapsible hint">
-    Drag to rotate, scroll or pinch to zoom, right-drag to pan.
-    Click a point to see its details and connections. Click a folder name to fly to it.
-  </div>
-</aside>
-
-<aside id="details" class="panel" aria-live="polite"></aside>
-<div id="tooltip"></div>
+<div id="app">
+  <header id="topbar">
+    <h1>Anokos Code City</h1>
+    <div class="seg" role="group" aria-label="View">
+      <button id="mode2d" class="on" type="button">Map</button>
+      <button id="mode3d" type="button">3D</button>
+    </div>
+    <div class="seg" role="group" aria-label="Camera">
+      <button id="fit" type="button" title="Show everything">Fit</button>
+    </div>
+    <span id="stats"></span>
+    <nav class="toplinks">
+      <a href="graph.html">Graph view</a>
+      <a class="hide-sm" href="https://github.com/LandonDevAnokos/Anokos">GitHub</a>
+      <a href="../">Home</a>
+    </nav>
+  </header>
+  <main id="view">
+    <div id="labels"></div>
+    <div id="crumb">Anokos</div>
+    <div id="tip"></div>
+    <div id="loading">Loading source...</div>
+  </main>
+  <aside id="side" class="collapsed">
+    <div class="search">
+      <input id="q" type="search" placeholder="Search symbol or text, e.g. KMain" autocomplete="off" spellcheck="false" aria-label="Search the source">
+      <button id="toggle-side" type="button">Panel</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button data-tab="inspector" class="on" type="button" role="tab">Inspector</button>
+      <button data-tab="results" type="button" role="tab">Results</button>
+    </div>
+    <div id="inspector" class="pane on"></div>
+    <div id="results" class="pane"></div>
+  </aside>
+</div>
 
 <script type="importmap">
 { "imports": {
@@ -155,384 +150,892 @@
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
-const KIND_COLORS = { file: "#ffffff", function: "#4fc3f7", global: "#ffd54f", class: "#ce93d8", define: "#78909c", asm: "#ff8a65" };
-const KIND_LABELS = { file: "Files", function: "Functions", global: "Global variables", class: "Classes", define: "#defines", asm: "Asm labels" };
-const KIND_SIZE   = { file: 16, function: 9, global: 7, class: 10, define: 5, asm: 7 };
+// ------------------------------------------------------------------ constants
+const CW = 0.6;            // char width, in line heights
+const COL_CHARS = 88;      // code column width in chars
+const COL_GAP = 3;         // gap between columns, in line heights
+const COL_W = COL_CHARS * CW;
+const COL_STRIDE = COL_W + COL_GAP;
+const SLAB = 9;            // folder platform step height (3D)
+const MAX_DETAIL = matchMedia("(max-width: 820px)").matches ? 10 : 22;
+const TOP_COLORS = { Kernel: "#26a69a", Adam: "#43a047", Compiler: "#3f7fd8", Anokos: "#d8dde3", Apps: "#8e63ce",
+  Demo: "#e08a2c", Misc: "#c7a326", Doc: "#7a8796", "": "#5b6b7a" };
+const SYN = ["#c9ccd1", "#c792ea", "#ffcb6b", "#a5d6a7", "#5f6b7a", "#f78c6c", "#82aaff", "#8b919a"]; // text kw type str comment num preproc punct
+const KW = new Set(("if else while for do switch case default break return goto try catch throw sizeof offset class union " +
+  "public static extern _extern import _import intern _intern asm interrupt lock reg noreg no_warn lastclass start end " +
+  "TRUE FALSE NULL ON OFF").split(" "));
+const TY = new Set("U0 I0 U8 I8 U16 I16 U32 I32 U64 I64 F64 Bool U8i I8i U16i I16i U32i I32i U64i I64i F64i".split(" "));
 const EDGE_COLORS = { calls: "#4fc3f7", uses: "#ffd54f", type: "#ce93d8", inherits: "#f48fb1", includes: "#ffffff", runs: "#81c784" };
 const EDGE_TEXT = {
-  out: { calls: "Calls", uses: "Uses", type: "Uses types", inherits: "Inherits from", includes: "Includes", runs: "Runs at top level" },
+  out: { calls: "Calls", uses: "Uses", type: "Uses types", inherits: "Inherits from", includes: "Includes", runs: "Runs" },
   in:  { calls: "Called by", uses: "Used by", type: "Used as a type by", inherits: "Inherited by", includes: "Included by", runs: "Run by" },
 };
-const LIST_LIMIT = 150;
-
-const data = await (await fetch("codemap.json")).json();
-const { nodes, edges, details, files, kinds, edgeKinds } = data;
-const N = nodes.length;
-const kindOf = i => kinds[nodes[i][0]];
-const fileOf = i => files[nodes[i][2]];
+const REPO = "https://github.com/LandonDevAnokos/Anokos/blob/main/src/";
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const loading = document.getElementById("loading");
+const tick = () => new Promise(r => setTimeout(r, 0));
 
-// adjacency
-const outAdj = Array.from({ length: N }, () => []);
-const inAdj = Array.from({ length: N }, () => []);
-for (const [a, b, t] of edges) { outAdj[a].push([b, t]); inAdj[b].push([a, t]); }
+// ------------------------------------------------------------------ data
+const [map, src] = await Promise.all([
+  fetch("codemap.json").then(r => r.json()),
+  fetch("source.json").then(r => r.json()),
+]);
+await document.fonts.load('16px "IBM Plex Mono"').catch(() => {});
+loading.textContent = "Reading 117,000 lines...";
+await tick();
 
-// ---------- renderer
-const host = document.getElementById("scene");
+const FILES = src.files.map((path, i) => {
+  const lines = src.text[i].split("\n");
+  return { i, path, name: path.split("/").pop(), top: path.includes("/") ? path.split("/")[0] : "", lines, n: lines.length };
+});
+
+// syntax runs per file: flat Uint16Array of [start,end,class] with a per-line index
+function lex(file) {
+  const out = [], idx = new Uint32Array(file.n + 1);
+  let block = false;
+  for (let li = 0; li < file.n; li++) {
+    idx[li] = out.length;
+    const ln = file.lines[li], n = ln.length;
+    let i = 0;
+    if (!block && /^\s*#/.test(ln)) {
+      ln.replace(/\S+/g, (m, at) => { out.push(at, at + m.length, 6); return m; });
+      continue;
+    }
+    while (i < n) {
+      const c = ln[i];
+      if (block) {
+        const e = ln.indexOf("*/", i);
+        const end = e < 0 ? n : e + 2;
+        out.push(i, end, 4); i = end;
+        if (e >= 0) block = false;
+      } else if (c === " ") { i++; }
+      else if (c === "/" && ln[i + 1] === "/") { out.push(i, n, 4); i = n; }
+      else if (c === "/" && ln[i + 1] === "*") {
+        const e = ln.indexOf("*/", i + 2);
+        const end = e < 0 ? n : e + 2;
+        out.push(i, end, 4); i = end;
+        if (e < 0) block = true;
+      } else if (c === '"' || c === "'") {
+        let j = i + 1;
+        while (j < n && ln[j] !== c) { if (ln[j] === "\\") j++; j++; }
+        j = Math.min(n, j + 1); out.push(i, j, 3); i = j;
+      } else if (c >= "0" && c <= "9") {
+        let j = i + 1; while (j < n && /[\w.]/.test(ln[j])) j++;
+        out.push(i, j, 5); i = j;
+      } else if (/[A-Za-z_]/.test(c)) {
+        let j = i + 1; while (j < n && /\w/.test(ln[j])) j++;
+        const w = ln.slice(i, j);
+        out.push(i, j, KW.has(w) ? 1 : (TY.has(w) || /^C[A-Z][a-z]/.test(w)) ? 2 : 0); i = j;
+      } else {
+        let j = i + 1; while (j < n && /[^\sA-Za-z0-9_"'/]/.test(ln[j])) j++;
+        out.push(i, j, 7); i = j;
+      }
+    }
+  }
+  idx[file.n] = out.length;
+  file.runs = Uint16Array.from(out, v => Math.min(v, 65535));
+  file.ridx = idx;
+}
+for (let k = 0; k < FILES.length; k++) { lex(FILES[k]); if (k % 60 === 0) await tick(); }
+
+// ------------------------------------------------------------------ treemap
+const root = { name: "Anokos", path: "", dirs: new Map(), files: [], depth: 0, parent: null };
+for (const f of FILES) {
+  let d = root;
+  const parts = f.path.split("/");
+  for (let k = 0; k < parts.length - 1; k++) {
+    if (!d.dirs.has(parts[k]))
+      d.dirs.set(parts[k], { name: parts[k], path: parts.slice(0, k + 1).join("/"), dirs: new Map(), files: [], depth: d.depth + 1, parent: d });
+    d = d.dirs.get(parts[k]);
+  }
+  d.files.push(f);
+  f.dir = d;
+}
+const DIRS = [];
+(function weigh(d) {
+  DIRS.push(d);
+  let w = 0;
+  for (const s of d.dirs.values()) w += weigh(s);
+  for (const f of d.files) { f.w = Math.max(f.n, 12) * COL_STRIDE * 1.1; w += f.w; }
+  d.w = w * 1.06 + 400;
+  return d.w;
+})(root);
+
+function squarify(items, x, y, w, h) {
+  const total = items.reduce((s, it) => s + it.w, 0);
+  const scale = (w * h) / total;
+  const list = items.slice().sort((a, b) => b.w - a.w);
+  let i = 0;
+  while (i < list.length) {
+    const short = Math.min(w, h);
+    let sum = list[i].w * scale, j = i + 1;
+    const worst = (s, mx, mn) => Math.max(short * short * mx / (s * s), (s * s) / (short * short * mn));
+    let cur = worst(sum, list[i].w * scale, list[i].w * scale);
+    while (j < list.length) {
+      const a = list[j].w * scale, s2 = sum + a;
+      const nw = worst(s2, list[i].w * scale, a);
+      if (nw > cur) break;
+      cur = nw; sum = s2; j++;
+    }
+    const thick = sum / short;
+    let off = 0;
+    for (let k = i; k < j; k++) {
+      const len = (list[k].w * scale) / thick;
+      list[k].r = w >= h ? { x, y: y + off, w: thick, h: len } : { x: x + off, y, w: len, h: thick };
+      off += len;
+    }
+    if (w >= h) { x += thick; w -= thick; } else { y += thick; h -= thick; }
+    i = j;
+  }
+}
+const WORLD = Math.sqrt(root.w);
+function layout(d, r) {
+  d.r = r;
+  const pad = Math.min(Math.max(Math.sqrt(r.w * r.h) * 0.012, 1.2), 16);
+  const side = Math.sqrt(r.w * r.h);
+  const head = d.depth === 0 ? pad : Math.min(Math.max(side * (d.depth === 1 ? 0.034 : 0.03), 3), 70);
+  d.head = head;
+  const inner = { x: r.x + pad, y: r.y + head, w: Math.max(1, r.w - 2 * pad), h: Math.max(1, r.h - head - pad) };
+  const items = [...d.dirs.values(), ...d.files];
+  if (items.length) squarify(items, inner.x, inner.y, inner.w, inner.h);
+  for (const s of d.dirs.values()) layout(s, s.r);
+  for (const f of d.files) {
+    const g = Math.min(Math.max(Math.min(f.r.w, f.r.h) * 0.025, 0.4), 3);
+    f.r = { x: f.r.x + g, y: f.r.y + g, w: Math.max(0.5, f.r.w - 2 * g), h: Math.max(0.5, f.r.h - 2 * g) };
+    fitCode(f);
+  }
+}
+function fitCode(f) {
+  const m = 0.8;
+  const W = f.r.w - 2 * m, H = f.r.h - 2 * m;
+  let lo = 0.01, hi = 8;
+  for (let it = 0; it < 40; it++) {
+    const fs = (lo + hi) / 2;
+    const cols = Math.max(1, Math.floor((W + COL_GAP * fs) / (COL_STRIDE * fs)));
+    const rows = Math.floor(H / fs);
+    if (rows >= 1 && cols * rows >= f.n) lo = fs; else hi = fs;
+  }
+  f.fs = lo;
+  f.cols = Math.max(1, Math.floor((W + COL_GAP * lo) / (COL_STRIDE * lo)));
+  f.rows = Math.max(1, Math.ceil(f.n / f.cols));
+  f.ox = f.r.x + m; f.oz = f.r.y + m;
+}
+layout(root, { x: 0, y: 0, w: WORLD, h: WORLD });
+
+// heights
+for (const f of FILES) f.bh = 10 + 24 * Math.log10(f.n + 1);
+let HS = 0.03;  // height scale: ~0 for the flat map, 1 for 3D
+const dirTop = d => (d.depth + 1) * SLAB * HS;
+const fileBase = f => dirTop(f.dir);
+const fileTop = f => fileBase(f) + f.bh * HS;
+
+// position of a line inside a file, in world units
+function linePos(f, line) {
+  const k = Math.max(0, Math.min(f.n - 1, line - 1));
+  const col = Math.floor(k / f.rows), row = k % f.rows;
+  return { x: f.ox + col * COL_STRIDE * f.fs, z: f.oz + row * f.fs, w: COL_W * f.fs, h: f.fs };
+}
+
+// ------------------------------------------------------------------ three.js scene
+const view = document.getElementById("view");
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.setClearColor(0x000000, 1);
-host.appendChild(renderer.domElement);
-const labelRenderer = new CSS2DRenderer();
-labelRenderer.setSize(innerWidth, innerHeight);
-Object.assign(labelRenderer.domElement.style, { position: "absolute", inset: "0", pointerEvents: "none" });
-host.appendChild(labelRenderer.domElement);
-
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x08090b, 1);
+view.prepend(renderer.domElement);
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, 60000);
-camera.position.set(0, 1200, 7200);
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 100000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.minDistance = 30;
-controls.maxDistance = 20000;
+controls.dampingFactor = 0.12;
+controls.screenSpacePanning = true;
+controls.zoomToCursor = true;
+controls.zoomSpeed = 2.2;
+controls.minDistance = 4;
+controls.maxDistance = WORLD * 4;
 
-// ---------- points
-const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), size = new Float32Array(N), alpha = new Float32Array(N);
-const baseColor = [];
-for (let i = 0; i < N; i++) {
-  const n = nodes[i];
-  pos.set([n[4], n[5], n[6]], i * 3);
-  const c = new THREE.Color(KIND_COLORS[kindOf(i)]);
-  baseColor.push(c);
+// atlas: the whole city drawn top-down, code as colored bars
+loading.textContent = "Drawing the city...";
+await tick();
+const maxTex = renderer.capabilities.maxTextureSize;
+const ATLAS = Math.min(4096, maxTex);
+const atlasCanvas = document.createElement("canvas");
+atlasCanvas.width = atlasCanvas.height = ATLAS;
+{
+  const ctx = atlasCanvas.getContext("2d");
+  const a = ATLAS / WORLD;
+  ctx.fillStyle = "#101216";
+  for (const f of FILES) ctx.fillRect(f.r.x * a, f.r.y * a, f.r.w * a, f.r.h * a);
+  const paths = SYN.map(() => new Path2D());
+  for (const f of FILES) {
+    const fs = f.fs, stride = COL_STRIDE * fs;
+    for (let li = 0; li < f.n; li++) {
+      const col = Math.floor(li / f.rows), row = li % f.rows;
+      const x0 = (f.ox + col * stride) * a, y0 = (f.oz + (row + 0.2) * fs) * a, bh = Math.max(0.35, 0.62 * fs * a);
+      for (let k = f.ridx[li]; k < f.ridx[li + 1]; k += 3) {
+        const s = f.runs[k], e = Math.min(f.runs[k + 1], COL_CHARS);
+        if (s >= COL_CHARS) break;
+        paths[f.runs[k + 2]].rect(x0 + s * CW * fs * a, y0, (e - s) * CW * fs * a, bh);
+      }
+    }
+  }
+  paths.forEach((p, c) => { ctx.fillStyle = SYN[c]; ctx.globalAlpha = c === 4 ? 0.7 : 0.9; ctx.fill(p); });
+  ctx.globalAlpha = 1;
 }
-const geo = new THREE.BufferGeometry();
-geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-geo.setAttribute("size", new THREE.BufferAttribute(size, 1));
-geo.setAttribute("alpha", new THREE.BufferAttribute(alpha, 1));
-const pointMat = new THREE.ShaderMaterial({
-  uniforms: { scale: { value: innerHeight * renderer.getPixelRatio() } },
-  vertexShader: `
-    attribute float size; attribute float alpha; attribute vec3 color;
-    varying vec3 vColor; varying float vAlpha; uniform float scale;
-    void main() {
-      vColor = color; vAlpha = alpha;
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      gl_PointSize = size > 0.0 ? clamp(size * scale / -mv.z, 2.0, 34.0) : 0.0;
-      gl_Position = projectionMatrix * mv;
-    }`,
-  fragmentShader: `
-    varying vec3 vColor; varying float vAlpha;
-    void main() {
-      float d = length(gl_PointCoord - 0.5);
-      if (d > 0.5) discard;
-      gl_FragColor = vec4(vColor, vAlpha * smoothstep(0.5, 0.36, d));
-    }`,
-  transparent: true, depthWrite: false,
-});
-const points = new THREE.Points(geo, pointMat);
-scene.add(points);
+const atlasTex = new THREE.CanvasTexture(atlasCanvas);
+atlasTex.colorSpace = THREE.SRGBColorSpace;
+atlasTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+atlasTex.generateMipmaps = true;
+atlasTex.minFilter = THREE.LinearMipmapLinearFilter;
 
-// ---------- edges
-function edgeGeometry(list) {
-  const p = new Float32Array(list.length * 6), c = new Float32Array(list.length * 6);
-  list.forEach(([a, b, t], k) => {
-    p.set([pos[a * 3], pos[a * 3 + 1], pos[a * 3 + 2], pos[b * 3], pos[b * 3 + 1], pos[b * 3 + 2]], k * 6);
-    const ec = new THREE.Color(EDGE_COLORS[edgeKinds[t]]);
-    c.set([ec.r, ec.g, ec.b, ec.r, ec.g, ec.b], k * 6);
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+boxGeo.translate(0, 0.5, 0);
+const vert = `
+  attribute vec4 aUv; attribute vec3 aTint;
+  varying vec2 vUv; varying vec3 vN; varying vec3 vTint;
+  void main() {
+    vN = normal; vTint = aTint;
+    vUv = vec2(mix(aUv.x, aUv.z, uv.x), mix(aUv.y, aUv.w, uv.y));
+    vec4 p = vec4(position, 1.0);
+    #ifdef USE_INSTANCING
+      p = instanceMatrix * p;
+    #endif
+    gl_Position = projectionMatrix * modelViewMatrix * p;
+  }`;
+const frag = (textured) => `
+  uniform sampler2D atlas; varying vec2 vUv; varying vec3 vN; varying vec3 vTint;
+  void main() {
+    if (vN.y > 0.5) {
+      ${textured ? "gl_FragColor = texture2D(atlas, vUv);" : "gl_FragColor = vec4(vTint, 1.0);"}
+    } else {
+      float l = 0.42 + 0.22 * abs(vN.x) + 0.12 * vN.z;
+      gl_FragColor = vec4(vTint * l, 1.0);
+    }
+    #include <colorspace_fragment>
+  }`;
+const buildingMat = new THREE.ShaderMaterial({ uniforms: { atlas: { value: atlasTex } }, vertexShader: vert, fragmentShader: frag(true) });
+const slabMat = new THREE.ShaderMaterial({ uniforms: { atlas: { value: null } }, vertexShader: vert, fragmentShader: frag(false) });
+
+function instanced(count, mat) {
+  const m = new THREE.InstancedMesh(boxGeo, mat, count);
+  m.geometry = boxGeo.clone();
+  m.geometry.setAttribute("aUv", new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4));
+  m.geometry.setAttribute("aTint", new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
+  m.frustumCulled = false;
+  scene.add(m);
+  return m;
+}
+const buildings = instanced(FILES.length, buildingMat);
+const slabs = instanced(DIRS.length, slabMat);
+const topColor = top => new THREE.Color(TOP_COLORS[top] ?? TOP_COLORS[""]);
+FILES.forEach((f, k) => {
+  buildings.geometry.attributes.aUv.setXYZW(k, f.r.x / WORLD, 1 - (f.r.y + f.r.h) / WORLD, (f.r.x + f.r.w) / WORLD, 1 - f.r.y / WORLD);
+  const c = topColor(f.top).multiplyScalar(0.55);
+  buildings.geometry.attributes.aTint.setXYZ(k, c.r, c.g, c.b);
+});
+DIRS.forEach((d, k) => {
+  const top = d.path.split("/")[0];
+  const c = d.depth === 0 ? new THREE.Color("#15171b") : topColor(top).multiplyScalar(Math.min(0.92, 0.42 + 0.12 * d.depth));
+  slabs.geometry.attributes.aTint.setXYZ(k, c.r, c.g, c.b);
+});
+
+// outlines for folders and search hits
+const outlineMat = new THREE.LineBasicMaterial({ color: 0x0b0c0e, transparent: true, opacity: 0.85 });
+const outlines = new THREE.LineSegments(new THREE.BufferGeometry(), outlineMat);
+scene.add(outlines);
+const hitMat = new THREE.LineBasicMaterial({ color: 0xffd54f });
+const hitLines = new THREE.LineSegments(new THREE.BufferGeometry(), hitMat);
+scene.add(hitLines);
+const selMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+const selLines = new THREE.LineSegments(new THREE.BufferGeometry(), selMat);
+scene.add(selLines);
+function rectLines(list) {   // list of [rect, y]
+  const p = new Float32Array(list.length * 24);
+  list.forEach(([r, y], k) => {
+    const x0 = r.x, x1 = r.x + r.w, z0 = r.y, z1 = r.y + r.h, o = k * 24;
+    p.set([x0, y, z0, x1, y, z0, x1, y, z0, x1, y, z1, x1, y, z1, x0, y, z1, x0, y, z1, x0, y, z0], o);
   });
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(p, 3));
-  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
   return g;
 }
-const allEdges = new THREE.LineSegments(new THREE.BufferGeometry(),
-  new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.07, depthWrite: false, blending: THREE.AdditiveBlending }));
-allEdges.visible = false;
-scene.add(allEdges);
-const selEdges = new THREE.LineSegments(new THREE.BufferGeometry(),
-  new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false }));
-scene.add(selEdges);
 
-// ---------- labels for folders
-const labelObjs = [];
-function addLabel(text, x, y, z, cls) {
-  const el = document.createElement("div");
-  el.className = "label " + cls;
-  el.textContent = text;
-  el.addEventListener("click", () => flyTo(new THREE.Vector3(x, y, z), cls === "top" ? 2600 : 900));
-  const obj = new CSS2DObject(el);
-  obj.position.set(x, y, z);
-  scene.add(obj);
-  labelObjs.push({ obj, cls, pos: new THREE.Vector3(x, y, z) });
-}
-for (const [name, x, y, z] of data.tops) addLabel(name === "(root)" ? "/ (root files)" : name + "/", x, y + 40, z, "top");
-for (const [name, x, y, z] of data.dirs) if (name.includes("/")) addLabel(name.split("/").slice(1).join("/") + "/", x, y, z, "dir");
-
-// ---------- state
-const visibleKinds = new Set(kinds.filter(k => k !== "define"));
-let selected = -1;
-let neighbors = new Set();
-
-function refresh() {
-  const sel = selected >= 0;
-  for (let i = 0; i < N; i++) {
-    const k = kindOf(i);
-    const shown = visibleKinds.has(k) || i === selected || neighbors.has(i);
-    let s = shown ? KIND_SIZE[k] : 0, a = 0.9, c = baseColor[i];
-    if (sel) {
-      if (i === selected) { s *= 2.2; a = 1; }
-      else if (neighbors.has(i)) { s *= 1.4; a = 1; }
-      else { a = 0.12; }
-    }
-    size[i] = s; alpha[i] = a;
-    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
-  }
-  geo.attributes.size.needsUpdate = geo.attributes.alpha.needsUpdate = geo.attributes.color.needsUpdate = true;
-
-  const showAll = document.getElementById("all-edges").checked;
-  if (showAll && !allEdges.geometry.attributes.position) {
-    allEdges.geometry.dispose();
-    allEdges.geometry = edgeGeometry(edges);
-  }
-  allEdges.visible = showAll;
-  allEdges.material.opacity = sel ? 0.025 : 0.07;
-
-  selEdges.geometry.dispose();
-  selEdges.geometry = sel ? edgeGeometry(
-    outAdj[selected].map(([b, t]) => [selected, b, t]).concat(inAdj[selected].map(([a, t]) => [a, selected, t]))
-  ) : new THREE.BufferGeometry();
+const dummy = new THREE.Object3D();
+function applyHeights() {
+  FILES.forEach((f, k) => {
+    dummy.position.set(f.r.x + f.r.w / 2, fileBase(f), f.r.y + f.r.h / 2);
+    dummy.scale.set(f.r.w, Math.max(0.01, f.bh * HS), f.r.h);
+    dummy.updateMatrix();
+    buildings.setMatrixAt(k, dummy.matrix);
+  });
+  DIRS.forEach((d, k) => {
+    dummy.position.set(d.r.x + d.r.w / 2, 0, d.r.y + d.r.h / 2);
+    dummy.scale.set(d.r.w, dirTop(d), d.r.h);
+    dummy.updateMatrix();
+    slabs.setMatrixAt(k, dummy.matrix);
+  });
+  buildings.instanceMatrix.needsUpdate = slabs.instanceMatrix.needsUpdate = true;
+  buildings.computeBoundingSphere(); slabs.computeBoundingSphere();
+  outlines.geometry.dispose();
+  outlines.geometry = rectLines(DIRS.filter(d => d.depth > 0).map(d => [d.r, dirTop(d) + 0.02]));
+  for (const [fi, det] of details) if (det.mesh) det.mesh.position.y = fileTop(FILES[fi]) + 0.02;
+  updateHitLines();
+  updateSelection();
 }
 
-// ---------- details panel
-const detailsEl = document.getElementById("details");
-function chip(i) {
-  return `<span class="chip" data-node="${i}"><span class="swatch" style="background:${KIND_COLORS[kindOf(i)]}"></span>${esc(nodes[i][1])}</span>`;
-}
-function group(title, list) {
-  if (!list.length) return "";
-  const shown = list.slice(0, LIST_LIMIT).join("");
-  const more = list.length > LIST_LIMIT ? `<span class="more">and ${list.length - LIST_LIMIT} more</span>` : "";
-  return `<div class="group"><h3>${esc(title)} (${list.length})</h3><div class="chips">${shown}${more}</div></div>`;
-}
-function srcLink(i, line) {
-  return `${data.meta.repo}${fileOf(i).split("/").map(encodeURIComponent).join("/")}#L${line}`;
-}
-function showDetails(i) {
-  const [k, name, , line] = nodes[i];
-  const kind = kinds[k], d = details[i] || {};
-  let html = `<button class="close" type="button" aria-label="Close">&times;</button>
-    <div class="d-kind" style="color:${KIND_COLORS[kind]}"><span class="swatch" style="background:${KIND_COLORS[kind]}"></span>${esc(kind === "global" ? "global variable" : kind === "asm" ? "asm label" : kind)}</div>
-    <div class="d-name">${esc(name)}</div>
-    <div class="d-loc"><a href="${srcLink(i, line)}" target="_blank" rel="noopener">src/${esc(fileOf(i))}${kind === "file" ? "" : ":" + line}</a></div>`;
-  if (d.sig && kind !== "file") html += `<div class="d-sig">${esc(d.sig)}</div>`;
-  if (d.decl === "intrinsic") html += `<div class="d-loc">Compiler intrinsic</div>`;
-  if (d.label) html += `<div class="d-loc">Implemented by asm label ${esc(d.label)}</div>`;
-  if (d.params) html += group("Parameters", d.params.map(p => `<span class="chip plain">${esc(p)}</span>`));
-  if (d.locals) html += group("Local variables", d.locals.map(([n, l]) =>
-    `<a class="chip" href="${srcLink(i, l)}" target="_blank" rel="noopener">${esc(n)}<span class="ln">:${l}</span></a>`));
-  if (d.members) html += group("Members", d.members.map(([n, l]) =>
-    `<a class="chip" href="${srcLink(i, l)}" target="_blank" rel="noopener">${esc(n)}<span class="ln">:${l}</span></a>`));
-  if (kind === "file") {
-    const syms = [];
-    for (let j = 0; j < N; j++) if (nodes[j][2] === nodes[i][2] && j !== i) syms.push(chip(j));
-    html += group("Contains", syms);
-  }
-  for (const dir of ["out", "in"]) {
-    const adj = dir === "out" ? outAdj[i] : inAdj[i];
-    for (const ek of edgeKinds) {
-      const t = edgeKinds.indexOf(ek);
-      const list = [...new Set(adj.filter(e => e[1] === t).map(e => e[0]))]
-        .sort((a, b) => nodes[a][1].localeCompare(nodes[b][1]));
-      html += group(EDGE_TEXT[dir][ek], list.map(chip));
-    }
-  }
-  detailsEl.innerHTML = html;
-  detailsEl.style.display = "block";
-  detailsEl.scrollTop = 0;
-}
-detailsEl.addEventListener("click", e => {
-  if (e.target.closest(".close")) { select(-1); return; }
-  const c = e.target.closest("[data-node]");
-  if (c) select(+c.dataset.node, true);
-});
+// ------------------------------------------------------------------ detail textures (readable code)
+const details = new Map();  // file index -> { mesh, tex, size, ver }
+let hitVersion = 0;
+const hitsByFile = new Map();  // file index -> Set(lines)
+let selected = null;           // { f, line, node }
+const planeGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
 
-function select(i, fly = false) {
-  selected = i;
-  neighbors = new Set();
-  if (i >= 0) {
-    for (const [b] of outAdj[i]) neighbors.add(b);
-    for (const [a] of inAdj[i]) neighbors.add(a);
-    showDetails(i);
-    if (fly) flyTo(new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]), kindOf(i) === "file" ? 450 : 260);
-    history.replaceState(null, "", "#" + encodeURIComponent(nodes[i][1]) + "@" + encodeURIComponent(fileOf(i)));
-  } else {
-    detailsEl.style.display = "none";
-    history.replaceState(null, "", location.pathname + location.search);
-  }
-  refresh();
-}
-
-// ---------- camera flight
-let flight = null;
-function flyTo(target, dist) {
-  const dir = camera.position.clone().sub(controls.target).normalize();
-  flight = {
-    t0: performance.now(), dur: 900,
-    fromPos: camera.position.clone(), fromTarget: controls.target.clone(),
-    toPos: target.clone().add(dir.multiplyScalar(dist)), toTarget: target.clone(),
+function drawDetail(f, size, R) {
+  const aspect = R.h / R.w;
+  const cap = Math.min(2048, maxTex);
+  let tw = size, th = Math.round(size * aspect);
+  if (th > cap) { th = cap; tw = Math.round(cap / aspect); }
+  tw = Math.max(16, Math.min(tw, cap)); th = Math.max(16, Math.min(th, cap));
+  const cv = document.createElement("canvas");
+  cv.width = tw; cv.height = th;
+  const ctx = cv.getContext("2d");
+  const k = tw / R.w, fs = f.fs, fpx = fs * k, cwp = CW * fpx, stride = COL_STRIDE * fs * k;
+  ctx.fillStyle = "#101216";
+  ctx.fillRect(0, 0, tw, th);
+  const hits = hitsByFile.get(f.i);
+  const selLine = selected && selected.f === f ? selected.line : -1;
+  const ox = (f.ox - R.x) * k, oy = (f.oz - R.y) * k;
+  // only the rows and columns inside the region
+  const r0 = Math.max(0, Math.floor((R.y - f.oz) / fs) - 1), r1 = Math.min(f.rows, Math.ceil((R.y + R.h - f.oz) / fs) + 1);
+  const c0 = Math.max(0, Math.floor((R.x - f.ox) / (COL_STRIDE * fs))), c1 = Math.min(f.cols, Math.ceil((R.x + R.w - f.ox) / (COL_STRIDE * fs)));
+  // highlight backgrounds
+  const mark = (li, color) => {
+    const col = Math.floor(li / f.rows), row = li % f.rows;
+    ctx.fillStyle = color;
+    ctx.fillRect(ox + col * stride - 0.3 * fpx, oy + row * fpx, COL_W * fpx + 0.6 * fpx, fpx);
   };
+  if (hits) for (const l of hits) mark(l - 1, "rgba(255,213,79,0.22)");
+  if (selLine > 0) mark(selLine - 1, "rgba(255,255,255,0.16)");
+  const text = fpx >= 5.5;
+  if (text) {
+    ctx.font = `${(cwp / 0.6).toFixed(2)}px "IBM Plex Mono", Consolas, monospace`;
+    ctx.textBaseline = "middle";
+  }
+  for (let col = c0; col < c1; col++) for (let row = r0; row < r1; row++) {
+    const li = col * f.rows + row;
+    if (li >= f.n) break;
+    const x0 = ox + col * stride, y0 = oy + row * fpx;
+    const line = f.lines[li];
+    for (let q = f.ridx[li]; q < f.ridx[li + 1]; q += 3) {
+      const s = f.runs[q], e = Math.min(f.runs[q + 1], COL_CHARS), c = f.runs[q + 2];
+      if (s >= COL_CHARS) break;
+      ctx.fillStyle = SYN[c];
+      if (text) ctx.fillText(line.slice(s, e), x0 + s * cwp, y0 + fpx * 0.55);
+      else ctx.fillRect(x0 + s * cwp, y0 + 0.2 * fpx, (e - s) * cwp, Math.max(0.6, 0.62 * fpx));
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+function setDetail(fi, size, R) {
+  const f = FILES[fi];
+  let det = details.get(fi);
+  const tex = drawDetail(f, size, R);
+  if (!det) {
+    const mat = new THREE.MeshBasicMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+    const mesh = new THREE.Mesh(planeGeo, mat);
+    scene.add(mesh);
+    det = { mesh };
+    details.set(fi, det);
+  } else {
+    det.tex.dispose();
+    det.mesh.material.map = tex;
+    det.mesh.material.needsUpdate = true;
+  }
+  det.mesh.scale.set(R.w, 1, R.h);
+  det.mesh.position.set(R.x + R.w / 2, fileTop(f) + 0.02, R.y + R.h / 2);
+  Object.assign(det, { tex, size, ver: hitVersion, R, ppu: size / R.w });
+}
+function dropDetail(fi) {
+  const det = details.get(fi);
+  if (!det) return;
+  scene.remove(det.mesh); det.tex.dispose(); det.mesh.material.dispose();
+  details.delete(fi);
+}
+const frustum = new THREE.Frustum(), projScreen = new THREE.Matrix4(), box = new THREE.Box3();
+const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitP = new THREE.Vector3(), corner = new THREE.Vector2();
+const SCREEN_PTS = [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0], [0, -1], [0, 1], [-1, 0], [1, 0]];
+function visibleRegion(f) {
+  // where the screen lands on this file's roof, clipped to the file
+  plane.constant = -fileTop(f);
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, missed = false;
+  for (const [sx, sy] of SCREEN_PTS) {
+    raycaster.setFromCamera(corner.set(sx, sy), camera);
+    if (raycaster.ray.intersectPlane(plane, hitP) && hitP.distanceTo(camera.position) < camera.far) {
+      x0 = Math.min(x0, hitP.x); x1 = Math.max(x1, hitP.x); z0 = Math.min(z0, hitP.z); z1 = Math.max(z1, hitP.z);
+    } else missed = true;
+  }
+  if (missed || !isFinite(x0)) return { ...f.r };
+  const ax = Math.max(f.r.x, x0), bx = Math.min(f.r.x + f.r.w, x1);
+  const az = Math.max(f.r.y, z0), bz = Math.min(f.r.y + f.r.h, z1);
+  if (bx <= ax || bz <= az) return { ...f.r };
+  return { x: ax, y: az, w: bx - ax, h: bz - az };
+}
+const inside = (a, b) => b.x >= a.x - 1e-6 && b.y >= a.y - 1e-6 && b.x + b.w <= a.x + a.w + 1e-6 && b.y + b.h <= a.y + a.h + 1e-6;
+function grow(R, f, m) {
+  const x = Math.max(f.r.x, R.x - R.w * m), y = Math.max(f.r.y, R.y - R.h * m);
+  return { x, y, w: Math.min(f.r.x + f.r.w, R.x + R.w * (1 + m)) - x, h: Math.min(f.r.y + f.r.h, R.y + R.h * (1 + m)) - y };
+}
+let lodQueue = [];
+function planDetails() {
+  projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(projScreen);
+  const H = renderer.domElement.height, tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const want = [];
+  for (const f of FILES) {
+    box.min.set(f.r.x, fileBase(f), f.r.y); box.max.set(f.r.x + f.r.w, fileTop(f) + 0.1, f.r.y + f.r.h);
+    if (!frustum.intersectsBox(box)) continue;
+    const cx = Math.max(f.r.x, Math.min(camera.position.x, f.r.x + f.r.w));
+    const cz = Math.max(f.r.y, Math.min(camera.position.z, f.r.y + f.r.h));
+    const dist = Math.hypot(camera.position.x - cx, camera.position.y - fileTop(f), camera.position.z - cz);
+    const ppu = H / (2 * Math.max(dist, 0.5) * tanHalf);
+    if (f.fs * ppu < 1.6) continue;
+    want.push([f.i, Math.min(f.r.w * ppu, 1e5), ppu]);
+  }
+  want.sort((a, b) => b[1] - a[1]);
+  const keep = new Set();
+  lodQueue = [];
+  for (const [fi, , ppu] of want.slice(0, MAX_DETAIL)) {
+    keep.add(fi);
+    const f = FILES[fi];
+    const core = visibleRegion(f);
+    const det = details.get(fi);
+    const needPpu = Math.min(ppu, 2048 / core.w);
+    if (det && det.ver === hitVersion && inside(det.R, core) && det.ppu >= needPpu * 0.7) continue;
+    const R = grow(core, f, 0.25);
+    const size = Math.min(2048, 1 << Math.ceil(Math.log2(Math.max(256, R.w * ppu))));
+    lodQueue.push([fi, size, R]);
+  }
+  for (const fi of [...details.keys()]) if (!keep.has(fi)) dropDetail(fi);
 }
 
-// ---------- picking
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-function pick(x, y) {
-  mouse.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
-  raycaster.setFromCamera(mouse, camera);
-  raycaster.params.Points.threshold = Math.max(4, camera.position.distanceTo(controls.target) * 0.008);
-  let best = -1, bestD = Infinity;
-  for (const hit of raycaster.intersectObject(points)) {
-    const i = hit.index;
-    if (!size[i] || (selected >= 0 && alpha[i] < 0.5 && i !== selected)) continue;
-    const d = hit.distanceToRay / Math.max(1, size[i]) + hit.distance * 1e-5;
-    if (d < bestD) { bestD = d; best = i; }
+// ------------------------------------------------------------------ labels
+const labelsEl = document.getElementById("labels");
+const LABELS = [
+  ...DIRS.filter(d => d.depth > 0).map(d => ({ kind: "dir", obj: d, text: d.name + "/" })),
+  ...FILES.map(f => ({ kind: "file", obj: f, text: f.name })),
+];
+for (const L of LABELS) {
+  L.el = document.createElement("div");
+  L.el.className = "lbl" + (L.kind === "file" ? " file" : "");
+  L.el.textContent = L.text;
+  L.el.style.display = "none";
+  labelsEl.appendChild(L.el);
+}
+const v1 = new THREE.Vector3(), v2 = new THREE.Vector3();
+function updateLabels() {
+  const w = view.clientWidth, h = view.clientHeight;
+  for (const L of LABELS) {
+    const r = L.obj.r, y = L.kind === "dir" ? dirTop(L.obj) : fileTop(L.obj);
+    v1.set(r.x, y, r.y).project(camera);
+    v2.set(r.x + r.w, y, r.y).project(camera);
+    const sx = (v1.x + 1) / 2 * w, sy = (1 - v1.y) / 2 * h, ex = (v2.x + 1) / 2 * w;
+    const pw = Math.hypot(ex - sx, (1 - v2.y) / 2 * h - sy);
+    let headPx = 0;
+    if (L.kind === "dir") {
+      v2.set(r.x, y, r.y + L.obj.head).project(camera);
+      headPx = Math.hypot((v2.x - v1.x) / 2 * w, (v2.y - v1.y) / 2 * h);
+    }
+    const show = v1.z < 1 && v1.z > -1 && sx < w && sy < h + 20 && sx + pw > 0 && sy > -40 &&
+      (L.kind === "dir" ? (L.obj.depth === 1 ? pw > 40 : headPx >= 11 && pw > 30) : pw > 150);
+    if (show) {
+      L.el.style.display = "block";
+      L.el.style.transform = `translate(${Math.round(sx + 3)}px, ${Math.round(sy + (L.kind === "dir" ? (Math.min(headPx, 40) - 15) / 2 : 2))}px)`;
+      L.el.style.maxWidth = Math.max(40, pw - 6) + "px";
+      L.el.style.overflow = "hidden";
+    } else if (L.el.style.display !== "none") L.el.style.display = "none";
+  }
+}
+
+// ------------------------------------------------------------------ camera
+let mode = "2d";
+function sizeView() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(sizeView).observe(view);
+sizeView();
+
+let flight = null;
+function flyTo(target, dist, polar = null) {
+  const fromPos = camera.position.clone(), fromT = controls.target.clone();
+  let dir = camera.position.clone().sub(controls.target).normalize();
+  if (polar !== null) {
+    const az = Math.atan2(dir.x, dir.z);
+    dir = new THREE.Vector3(Math.sin(polar) * Math.sin(az), Math.cos(polar), Math.sin(polar) * Math.cos(az));
+  }
+  flight = { t0: performance.now(), dur: 850, fromPos, fromT, toPos: target.clone().add(dir.multiplyScalar(dist)), toT: target.clone() };
+}
+function fitAll(instant = false) {
+  const aspect = camera.aspect, tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const dist = (WORLD / 2) / tanHalf / Math.min(1, aspect) * 1.08;
+  const c = new THREE.Vector3(WORLD / 2, 0, WORLD / 2);
+  if (instant) {
+    controls.target.copy(c);
+    camera.position.set(WORLD / 2, dist, WORLD / 2 + (mode === "2d" ? 0.001 : dist * 0.9));
+  } else flyTo(c, mode === "2d" ? dist : dist * 1.1, mode === "2d" ? 0.0001 : 0.85);
+}
+function setMode(m) {
+  mode = m;
+  document.getElementById("mode2d").classList.toggle("on", m === "2d");
+  document.getElementById("mode3d").classList.toggle("on", m === "3d");
+  controls.enableRotate = m === "3d";
+  controls.mouseButtons = m === "3d"
+    ? { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }
+    : { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+  controls.touches = m === "3d"
+    ? { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }
+    : { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN };
+  controls.maxPolarAngle = m === "3d" ? 1.32 : 0.0002;
+  controls.minPolarAngle = 0;
+  heightAnim = { t0: performance.now(), from: HS, to: m === "3d" ? 1 : 0.03 };
+  const d = camera.position.distanceTo(controls.target);
+  flyTo(controls.target.clone(), d * (m === "3d" ? 1.05 : 1), m === "3d" ? 0.9 : 0.0001);
+}
+let heightAnim = null;
+document.getElementById("mode2d").onclick = () => setMode("2d");
+document.getElementById("mode3d").onclick = () => setMode("3d");
+document.getElementById("fit").onclick = () => fitAll();
+
+function flyToLine(f, line) {
+  const p = linePos(f, line);
+  const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const dist = Math.max(4, (renderer.domElement.clientHeight / (2 * tanHalf)) * f.fs / 15);
+  flyTo(new THREE.Vector3(p.x + p.w / 2, fileTop(f), p.z + p.h / 2), dist, mode === "2d" ? 0.0001 : 0.75);
+}
+
+// ------------------------------------------------------------------ symbols from the code map
+const NODES = map.nodes, KINDS = map.kinds, EK = map.edgeKinds, DET = map.details;
+const outAdj = NODES.map(() => []), inAdj = NODES.map(() => []);
+for (const [a, b, t] of map.edges) { outAdj[a].push([b, t]); inAdj[b].push([a, t]); }
+const nodesByFile = FILES.map(() => []);
+NODES.forEach((n, i) => { if (KINDS[n[0]] !== "file") nodesByFile[n[2]].push(i); });
+const defsByName = new Map();
+NODES.forEach((n, i) => { if (KINDS[n[0]] !== "file") (defsByName.get(n[1]) || defsByName.set(n[1], []).get(n[1])).push(i); });
+function symbolAt(fi, line) {
+  let best = -1;
+  for (const i of nodesByFile[fi]) {
+    const n = NODES[i], d = DET[i] || {};
+    if (n[3] === line) return i;
+    if (KINDS[n[0]] === "function" && d.end && n[3] <= line && line <= d.end) best = i;
   }
   return best;
 }
-const tooltip = document.getElementById("tooltip");
-let down = null;
-renderer.domElement.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY }; });
+const nodeFile = i => FILES[NODES[i][2]];
+
+// ------------------------------------------------------------------ picking + hover
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickAt(cx, cy) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  ndc.set(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObject(buildings, false)[0];
+  if (hit) {
+    const f = FILES[hit.instanceId];
+    if (hit.point.y < fileTop(f) - 0.05) return { f, line: 0 };
+    const lx = hit.point.x - f.ox, lz = hit.point.z - f.oz;
+    const col = Math.floor(lx / (COL_STRIDE * f.fs)), row = Math.floor(lz / f.fs);
+    const line = col * f.rows + row + 1;
+    return { f, line: lx >= 0 && lz >= 0 && col < f.cols && row < f.rows && line <= f.n ? line : 0 };
+  }
+  const sh = raycaster.intersectObject(slabs, false)[0];
+  return sh ? { d: DIRS[sh.instanceId] } : null;
+}
+const tip = document.getElementById("tip"), crumb = document.getElementById("crumb");
+let downAt = null;
+renderer.domElement.addEventListener("pointerdown", e => { downAt = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener("pointermove", e => {
+  if (e.buttons) { tip.style.display = "none"; return; }
+  const p = pickAt(e.clientX, e.clientY);
+  if (!p) { tip.style.display = "none"; crumb.textContent = "Anokos"; return; }
+  if (p.d) {
+    crumb.textContent = "Anokos / " + (p.d.path || "");
+    tip.style.display = "none";
+    return;
+  }
+  crumb.textContent = "Anokos / " + p.f.path + (p.line ? ":" + p.line : "");
   if (e.pointerType !== "mouse") return;
-  const i = pick(e.clientX, e.clientY);
-  if (i >= 0) {
-    tooltip.innerHTML = `<b>${esc(nodes[i][1])}</b> <span>${esc(kindOf(i))} &middot; ${esc(fileOf(i))}</span>`;
-    tooltip.style.display = "block";
-    tooltip.style.left = Math.min(e.clientX + 14, innerWidth - tooltip.offsetWidth - 8) + "px";
-    tooltip.style.top = (e.clientY + 14) + "px";
-    renderer.domElement.style.cursor = "pointer";
-  } else {
-    tooltip.style.display = "none";
-    renderer.domElement.style.cursor = "";
-  }
+  tip.innerHTML = `<div class="path">src/${esc(p.f.path)}${p.line ? ":" + p.line : ""} &middot; ${p.f.n} lines</div>` +
+    (p.line ? `<pre>${esc(p.f.lines[p.line - 1].trim().slice(0, 120)) || " "}</pre>` : "");
+  const vr = view.getBoundingClientRect();
+  tip.style.display = "block";
+  tip.style.left = Math.min(e.clientX - vr.left + 14, vr.width - tip.offsetWidth - 6) + "px";
+  tip.style.top = Math.min(e.clientY - vr.top + 16, vr.height - tip.offsetHeight - 6) + "px";
 });
+renderer.domElement.addEventListener("pointerleave", () => { tip.style.display = "none"; });
 renderer.domElement.addEventListener("pointerup", e => {
-  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
-  const i = pick(e.clientX, e.clientY);
-  select(i);
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
+  const p = pickAt(e.clientX, e.clientY);
+  if (p && p.f) select(p.f, p.line || 1, false);
+  else if (!p) select(null);
+});
+renderer.domElement.addEventListener("dblclick", e => {
+  const p = pickAt(e.clientX, e.clientY);
+  if (p && p.f) { select(p.f, p.line || 1, false); flyToLine(p.f, p.line || 1); }
 });
 
-// ---------- search
-const searchEl = document.getElementById("search"), resultsEl = document.getElementById("results");
-const lowerNames = nodes.map(n => n[1].toLowerCase());
-let resultIds = [], activeResult = 0;
-function runSearch() {
-  const q = searchEl.value.trim().toLowerCase();
-  resultIds = [];
-  if (q) {
-    const scored = [];
-    for (let i = 0; i < N; i++) {
-      const s = lowerNames[i];
-      const at = s.indexOf(q);
-      if (at < 0) continue;
-      scored.push([(s === q ? 0 : at === 0 ? 1 : 2) * 1000 + s.length + (kindOf(i) === "define" ? 50 : 0), i]);
+// ------------------------------------------------------------------ selection, inspector, connection arcs
+const inspector = document.getElementById("inspector"), results = document.getElementById("results");
+const arcs = new THREE.LineSegments(new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthTest: false }));
+arcs.renderOrder = 10;
+scene.add(arcs);
+function nodePoint(i) {
+  const f = nodeFile(i), n = NODES[i];
+  if (KINDS[n[0]] === "file") return new THREE.Vector3(f.r.x + f.r.w / 2, fileTop(f), f.r.y + f.r.h / 2);
+  const p = linePos(f, n[3]);
+  return new THREE.Vector3(p.x + p.w / 2, fileTop(f), p.z + p.h / 2);
+}
+function buildArcs(i) {
+  const pts = [], cols = [];
+  if (i >= 0) {
+    const a = nodePoint(i);
+    const all = outAdj[i].map(([b, t]) => [a, nodePoint(b), t]).concat(inAdj[i].map(([b, t]) => [nodePoint(b), a, t])).slice(0, 400);
+    for (const [p, q, t] of all) {
+      const d = p.distanceTo(q), mid = p.clone().lerp(q, 0.5);
+      mid.y += Math.max(6, d * 0.35);
+      const c = new THREE.Color(EDGE_COLORS[EK[t]]);
+      const curve = new THREE.QuadraticBezierCurve3(p, mid, q).getPoints(24);
+      for (let k = 0; k < curve.length - 1; k++) {
+        pts.push(curve[k].x, curve[k].y, curve[k].z, curve[k + 1].x, curve[k + 1].y, curve[k + 1].z);
+        cols.push(c.r, c.g, c.b, c.r, c.g, c.b);
+      }
     }
-    scored.sort((a, b) => a[0] - b[0]);
-    resultIds = scored.slice(0, 40).map(x => x[1]);
   }
-  activeResult = 0;
-  resultsEl.innerHTML = resultIds.map((i, k) =>
-    `<li role="option" data-node="${i}" class="${k === 0 ? "active" : ""}"><span class="swatch" style="background:${KIND_COLORS[kindOf(i)]}"></span><span class="rname">${esc(nodes[i][1])}</span><span class="rfile">${esc(fileOf(i))}</span></li>`
-  ).join("") || (q ? `<li class="more">No matches</li>` : "");
-  resultsEl.style.display = q ? "block" : "none";
+  arcs.geometry.dispose();
+  arcs.geometry = new THREE.BufferGeometry();
+  arcs.geometry.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+  arcs.geometry.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
 }
-function setActive(k) {
-  const items = resultsEl.querySelectorAll("li[data-node]");
-  if (!items.length) return;
-  activeResult = (k + items.length) % items.length;
-  items.forEach((li, j) => li.classList.toggle("active", j === activeResult));
-  items[activeResult].scrollIntoView({ block: "nearest" });
+function updateSelection() {
+  selLines.geometry.dispose();
+  selLines.geometry = selected ? rectLines([[selected.f.r, fileTop(selected.f) + 0.04]]) : new THREE.BufferGeometry();
+  buildArcs(selected ? selected.node : -1);
 }
-searchEl.addEventListener("input", runSearch);
-searchEl.addEventListener("keydown", e => {
-  if (e.key === "ArrowDown") { setActive(activeResult + 1); e.preventDefault(); }
-  else if (e.key === "ArrowUp") { setActive(activeResult - 1); e.preventDefault(); }
-  else if (e.key === "Enter" && resultIds.length) { choose(resultIds[activeResult]); }
-  else if (e.key === "Escape") { searchEl.value = ""; runSearch(); searchEl.blur(); }
+function codeBlock(f, line, before = 3, after = 8) {
+  const a = Math.max(1, line - before), b = Math.min(f.n, line + after);
+  let h = "";
+  for (let l = a; l <= b; l++)
+    h += `<div class="${l === line ? "cur" : ""}"><span class="ln">${l}</span>${esc(f.lines[l - 1]) || " "}</div>`;
+  return `<div class="code">${h}</div>`;
+}
+function chip(i) { return `<span class="chip" data-node="${i}">${esc(NODES[i][1])}</span>`; }
+function group(title, list) {
+  if (!list.length) return "";
+  return `<h3>${esc(title)} (${list.length})</h3><div class="chips">${list.slice(0, 120).join("")}${list.length > 120 ? `<span class="more">and ${list.length - 120} more</span>` : ""}</div>`;
+}
+function select(f, line, fly) {
+  if (!f) { selected = null; updateSelection(); renderInspector(); redrawDetails(); return; }
+  selected = { f, line, node: symbolAt(f.i, line) };
+  updateSelection();
+  redrawDetails();
+  renderInspector();
+  showTab("inspector");
+  if (fly) flyToLine(f, line);
+}
+function renderInspector() {
+  if (!selected) {
+    inspector.innerHTML = `<div class="empty">
+      <p>Every folder is a block and every file is a building, sized by its number of lines and covered in its own code.
+      Zoom in to read it.</p>
+      <p><kbd>Scroll</kbd> zoom &middot; <kbd>Drag</kbd> move &middot; <kbd>Click</kbd> inspect a line &middot;
+      <kbd>Double-click</kbd> zoom to it. Switch to <b>3D</b> to tilt the city and see folders as raised blocks.</p>
+      <h3>Folders</h3><div class="legend">${Object.entries(TOP_COLORS).filter(([k]) => k)
+        .map(([k, c]) => `<span><i style="background:${c}"></i>${k}/</span>`).join("")}</div>
+      <h3>Code colors</h3><div class="legend">${["Keywords", "Types", "Strings", "Comments", "Numbers", "Preprocessor"]
+        .map((t, k) => `<span><i style="background:${SYN[k + 1]}"></i>${t}</span>`).join("")}</div>
+    </div>`;
+    return;
+  }
+  const { f, line, node } = selected;
+  let h = `<h2>${esc(f.name)}</h2><div class="sub"><a href="${REPO}${f.path.split("/").map(encodeURIComponent).join("/")}#L${line}" target="_blank" rel="noopener">src/${esc(f.path)}:${line}</a> &middot; ${f.n} lines</div>`;
+  h += codeBlock(f, line);
+  if (node >= 0) {
+    const n = NODES[node], d = DET[node] || {}, kind = KINDS[n[0]];
+    h += `<h3>${esc(kind === "global" ? "global variable" : kind === "asm" ? "asm label" : kind)}</h3>
+      <h2 style="font-size:14px">${esc(n[1])}</h2>`;
+    if (d.sig) h += `<div class="code"><div>${esc(d.sig)}</div></div>`;
+    if (d.params) h += group("Parameters", d.params.map(p => `<span class="chip">${esc(p)}</span>`));
+    if (d.locals) h += group("Local variables", d.locals.map(([nm, l]) => `<span class="chip" data-line="${l}">${esc(nm)}<span style="color:var(--faint)">:${l}</span></span>`));
+    if (d.members) h += group("Members", d.members.map(([nm, l]) => `<span class="chip" data-line="${l}">${esc(nm)}</span>`));
+    for (const dir of ["out", "in"]) for (let t = 0; t < EK.length; t++) {
+      const ids = [...new Set((dir === "out" ? outAdj : inAdj)[node].filter(e => e[1] === t).map(e => e[0]))]
+        .sort((a, b) => NODES[a][1].localeCompare(NODES[b][1]));
+      h += group(EDGE_TEXT[dir][EK[t]], ids.map(chip));
+    }
+    if (outAdj[node].length + inAdj[node].length)
+      h += `<p class="sub" style="margin-top:12px">Arcs in the city show these connections.</p>`;
+  }
+  inspector.innerHTML = h;
+  inspector.scrollTop = 0;
+}
+inspector.addEventListener("click", e => {
+  const c = e.target.closest("[data-node]");
+  if (c) { const i = +c.dataset.node; select(nodeFile(i), NODES[i][3], true); return; }
+  const l = e.target.closest("[data-line]");
+  if (l && selected) select(selected.f, +l.dataset.line, true);
 });
-resultsEl.addEventListener("click", e => { const li = e.target.closest("[data-node]"); if (li) choose(+li.dataset.node); });
-function choose(i) {
-  if (!visibleKinds.has(kindOf(i))) { visibleKinds.add(kindOf(i)); syncKindBoxes(); }
-  resultsEl.style.display = "none";
-  searchEl.blur();
-  select(i, true);
-}
-document.addEventListener("click", e => { if (!e.target.closest(".search")) resultsEl.style.display = "none"; });
 
-// ---------- filters
-const counts = {};
-for (const n of nodes) counts[kinds[n[0]]] = (counts[kinds[n[0]]] || 0) + 1;
-const kindsEl = document.getElementById("kinds");
-kindsEl.innerHTML = kinds.map(k => `<label><input type="checkbox" data-kind="${k}"><span class="swatch" style="background:${KIND_COLORS[k]}"></span>${KIND_LABELS[k]}<span class="n">${counts[k] || 0}</span></label>`).join("");
-function syncKindBoxes() { kindsEl.querySelectorAll("input").forEach(b => b.checked = visibleKinds.has(b.dataset.kind)); }
-kindsEl.addEventListener("change", e => {
-  const k = e.target.dataset.kind;
-  e.target.checked ? visibleKinds.add(k) : visibleKinds.delete(k);
-  refresh();
+// ------------------------------------------------------------------ search
+const qEl = document.getElementById("q");
+let searchTimer = 0;
+qEl.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 180); });
+qEl.addEventListener("keydown", e => {
+  if (e.key === "Enter") { clearTimeout(searchTimer); runSearch(true); }
+  if (e.key === "Escape") { qEl.value = ""; runSearch(); }
 });
-syncKindBoxes();
-document.getElementById("all-edges").addEventListener("change", refresh);
-document.getElementById("toggle-left").addEventListener("click", () => document.getElementById("left").classList.toggle("open"));
-
-const m = data.meta, fmt = x => x.toLocaleString("en-US");
-document.getElementById("stats").innerHTML =
-  `${fmt(m.counts.function)} functions, ${fmt(m.counts.global)} global variables, ${fmt(m.counts.class)} classes, ` +
-  `${fmt(m.locals)} local variables and ${fmt(m.members)} class members across ${fmt(m.files)} files, ` +
-  `with ${fmt(m.edges)} connections.` + (m.commit ? ` Source: commit <a href="https://github.com/LandonDevAnokos/Anokos/commit/${esc(m.commit)}" target="_blank" rel="noopener">${esc(m.commit)}</a>.` : "");
-
-// ---------- deep links: #Name@path/File.HC
-function fromHash() {
-  const h = decodeURIComponent(location.hash.slice(1));
-  if (!h) return;
-  const [name, file] = h.split("@");
-  for (let i = 0; i < N; i++)
-    if (nodes[i][1] === name && (!file || fileOf(i) === file)) { choose(i); return; }
+function runSearch(jump = false) {
+  const q = qEl.value.trim();
+  hitsByFile.clear();
+  hitVersion++;
+  if (!q) { results.innerHTML = `<div class="empty">Search for a function, variable, class or any text.</div>`; updateHitLines(); return; }
+  const defs = (defsByName.get(q) || []).slice();
+  if (!defs.length) {
+    const lq = q.toLowerCase();
+    for (const [name, ids] of defsByName) if (name.toLowerCase().startsWith(lq)) defs.push(...ids);
+    defs.splice(40);
+  }
+  const word = /^\w+$/.test(q);
+  const re = new RegExp(word ? `\\b${q}\\b` : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), word ? "" : "i");
+  const refs = [];
+  let total = 0;
+  for (const f of FILES) for (let l = 0; l < f.n; l++) {
+    if (re.test(f.lines[l])) {
+      total++;
+      if (!hitsByFile.has(f.i)) hitsByFile.set(f.i, new Set());
+      hitsByFile.get(f.i).add(l + 1);
+      if (refs.length < 3000) refs.push([f, l + 1]);
+    }
+  }
+  let h = `<div class="sub" style="margin-bottom:6px"><b style="color:var(--text);font-family:var(--mono)">${esc(q)}</b> &middot; ${defs.length} definitions &middot; ${total.toLocaleString("en-US")} matching lines &middot; ${hitsByFile.size} files</div>`;
+  if (defs.length) {
+    h += `<h3>Definitions</h3>`;
+    for (const i of defs) {
+      const n = NODES[i], f = nodeFile(i);
+      h += `<div class="filehead">${esc(f.path)}</div><div class="row" data-file="${f.i}" data-line="${n[3]}"><span class="ln">${n[3]}</span><span class="txt">${esc((DET[i] && DET[i].sig) || n[1])}</span><span class="tag">${esc(KINDS[n[0]])}</span></div>`;
+    }
+  }
+  if (refs.length) {
+    h += `<h3>Matches</h3>`;
+    let last = null;
+    for (const [f, l] of refs) {
+      if (f !== last) { h += `<div class="filehead">${esc(f.path)}</div>`; last = f; }
+      h += `<div class="row" data-file="${f.i}" data-line="${l}"><span class="ln">${l}</span><span class="txt">${esc(f.lines[l - 1].trim())}</span></div>`;
+    }
+    if (total > refs.length) h += `<div class="more">Showing the first ${refs.length.toLocaleString("en-US")} matches.</div>`;
+  }
+  if (!defs.length && !refs.length) h += `<div class="empty">No matches.</div>`;
+  results.innerHTML = h;
+  results.scrollTop = 0;
+  showTab("results");
+  updateHitLines();
+  if (jump) {
+    const first = defs.length ? [nodeFile(defs[0]), NODES[defs[0]][3]] : refs[0];
+    if (first) select(first[0], first[1], true);
+  }
 }
-
-// ---------- loop
-function resize() {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-  labelRenderer.setSize(innerWidth, innerHeight);
-  pointMat.uniforms.scale.value = innerHeight * renderer.getPixelRatio();
+results.addEventListener("click", e => {
+  const r = e.target.closest("[data-file]");
+  if (!r) return;
+  results.querySelectorAll(".row.on").forEach(x => x.classList.remove("on"));
+  r.classList.add("on");
+  const f = FILES[+r.dataset.file], line = +r.dataset.line;
+  selected = { f, line, node: symbolAt(f.i, line) };
+  updateSelection(); redrawDetails(); renderInspector();
+  flyToLine(f, line);
+});
+function updateHitLines() {
+  hitLines.geometry.dispose();
+  hitLines.geometry = rectLines([...hitsByFile.keys()].map(fi => [FILES[fi].r, fileTop(FILES[fi]) + 0.03]));
+  hitVersion++;
 }
-addEventListener("resize", resize);
+function redrawDetails() { hitVersion++; }
+
+// ------------------------------------------------------------------ side panel tabs
+function showTab(name) {
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  inspector.classList.toggle("on", name === "inspector");
+  results.classList.toggle("on", name === "results");
+  document.getElementById("side").classList.remove("collapsed");
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+document.getElementById("toggle-side").onclick = () => document.getElementById("side").classList.toggle("collapsed");
+if (!matchMedia("(max-width: 820px)").matches) document.getElementById("side").classList.remove("collapsed");
+
+const fmt = x => x.toLocaleString("en-US");
+document.getElementById("stats").textContent =
+  `${fmt(FILES.length)} files · ${fmt(FILES.reduce((s, f) => s + f.n, 0))} lines · ${fmt(map.meta.counts.function)} functions` +
+  (map.meta.commit ? ` · commit ${map.meta.commit}` : "");
+
+// ------------------------------------------------------------------ main loop
 const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+let lastPlan = 0;
 function frame(now) {
   if (flight) {
     const t = Math.min(1, (now - flight.t0) / flight.dur), k = ease(t);
     camera.position.lerpVectors(flight.fromPos, flight.toPos, k);
-    controls.target.lerpVectors(flight.fromTarget, flight.toTarget, k);
+    controls.target.lerpVectors(flight.fromT, flight.toT, k);
     if (t >= 1) flight = null;
   }
+  if (heightAnim) {
+    const t = Math.min(1, (now - heightAnim.t0) / 700);
+    HS = heightAnim.from + (heightAnim.to - heightAnim.from) * ease(t);
+    applyHeights();
+    if (t >= 1) heightAnim = null;
+  }
   controls.update();
-  const camDist = camera.position.distanceTo(controls.target);
-  for (const l of labelObjs) l.obj.visible = l.cls === "top" ? camDist > 600 : camera.position.distanceTo(l.pos) < 3200;
+  const dist = camera.position.distanceTo(controls.target);
+  camera.near = Math.max(0.05, dist / 200);
+  camera.far = dist * 6 + WORLD * 3;
+  camera.updateProjectionMatrix();
+  if (now - lastPlan > 200) { planDetails(); lastPlan = now; }
+  const t0 = performance.now();
+  while (lodQueue.length && performance.now() - t0 < 14) {
+    const [fi, size, R] = lodQueue.shift();
+    setDetail(fi, size, R);
+  }
+  updateLabels();
   renderer.render(scene, camera);
-  labelRenderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
-refresh();
-document.getElementById("loading").remove();
+
+// deep links: #path/to/File.HC:123 or #SymbolName
+function fromHash() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (!h) return false;
+  const m = h.match(/^(.+?)(?::(\d+))?$/);
+  const f = FILES.find(x => x.path === m[1]);
+  if (f) { select(f, +(m[2] || 1), true); return true; }
+  const ids = defsByName.get(h);
+  if (ids) { select(nodeFile(ids[0]), NODES[ids[0]][3], true); return true; }
+  return false;
+}
+addEventListener("hashchange", fromHash);
+
+setMode("2d");
+heightAnim = null; HS = 0.03;
+applyHeights();
+fitAll(true);
+flight = null;
+renderInspector();
+results.innerHTML = `<div class="empty">Search for a function, variable, class or any text.</div>`;
+loading.remove();
 requestAnimationFrame(frame);
 fromHash();
-addEventListener("hashchange", fromHash);
 </script>
 </body>
 </html>

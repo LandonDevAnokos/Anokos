@@ -1,4 +1,4 @@
-"""Build the data for the 3D code map (docs/code-map/) from the TerryC/HolyC sources.
+"""Build the data for the Code City and graph view (docs/code-map/) from the TerryC/HolyC sources.
 
 Usage (from the repository root):
   python tools/codemap.py              # writes docs/code-map/codemap.json
@@ -27,6 +27,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SRC = os.path.join(ROOT, "src")
 OUT = os.path.join(ROOT, "docs", "code-map", "codemap.json")
+OUT_SRC = os.path.join(ROOT, "docs", "code-map", "source.json")
+DOLDOC_TEXT = {"TX", "LK", "MA", "MU", "BT", "CB", "LS", "DA", "TR", "CK"}
 EXTS = (".HC", ".HH", ".TC", ".TH")
 
 BUILTIN_TYPES = {
@@ -461,6 +463,33 @@ def parse_asm(fi, body):
             fi.refs.append((owner, t, ln, False))
 
 
+def readable_source(path):
+    """Source text as TempleOS shows it: DolDoc commands replaced by their
+    visible text, "$$" as "$", tabs expanded. Line count is preserved."""
+    raw = open(path, "rb").read().split(b"\0")[0].decode("latin-1").replace("\r\n", "\n")
+    out, i, n = [], 0, len(raw)
+    while i < n:
+        c = raw[i]
+        if c != "$":
+            out.append(c)
+            i += 1
+            continue
+        j = raw.find("$", i + 1)
+        if j == -1:
+            out.append(raw[i:])
+            break
+        cmd = raw[i + 1:j]
+        if not cmd:
+            out.append("$")
+        else:
+            m = re.search(r'"((?:[^"\\]|\\.)*)"', cmd)
+            if cmd[:2].upper() in DOLDOC_TEXT and m:
+                out.append(m.group(1).replace('\\"', '"'))
+            out.append("\n" * cmd.count("\n"))
+        i = j + 1
+    return "".join(out).expandtabs(8)
+
+
 # ---------------------------------------------------------------- graph
 
 def collect_types(paths):
@@ -624,6 +653,7 @@ def main():
     n_members = sum(len(d.get("members", [])) for d in details)
     data = {
         "meta": {"commit": commit, "files": len(files), "counts": counts,
+                 "lines": sum(readable_source(os.path.join(SRC, fi.path)).count("\n") + 1 for fi in files),
                  "locals": n_locals, "members": n_members, "edges": len(edges),
                  "repo": "https://github.com/LandonDevAnokos/Anokos/blob/main/src/"},
         "kinds": KIND_NAMES,
@@ -638,6 +668,11 @@ def main():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(data, f, separators=(",", ":"))
+    with open(OUT_SRC, "w", encoding="utf-8") as f:
+        json.dump({"files": [fi.path for fi in files],
+                   "text": [readable_source(os.path.join(SRC, fi.path)) for fi in files]},
+                  f, separators=(",", ":"), ensure_ascii=False)
+    print(f"{OUT_SRC}: {os.path.getsize(OUT_SRC)//1024} KB")
     print(f"{OUT}: {os.path.getsize(OUT)//1024} KB, {len(nodes)} nodes, {len(edges)} edges, "
           f"{n_locals} locals, {n_members} members; {dict(counts)}")
 

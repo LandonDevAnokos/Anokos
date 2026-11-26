@@ -123,7 +123,7 @@
         <a class="hide-sm" href="#about">About</a>
         <a class="hide-sm" href="#roadmap">Roadmap</a>
         <a class="hide-sm" href="#start">Get started</a>
-        <a href="code-map/">Code map</a>
+        <a href="code-map/">Code City</a>
         <a href="https://github.com/LandonDevAnokos/Anokos">GitHub</a>
       </div>
     </nav>
@@ -139,7 +139,7 @@
       change and improve.</p>
     <div class="actions">
       <a class="btn primary" href="https://github.com/LandonDevAnokos/Anokos">View on GitHub</a>
-      <a class="btn secondary" href="code-map/">Explore the code in 3D</a>
+      <a class="btn secondary" href="code-map/">Explore the Code City</a>
     </div>
     <figure class="screen" style="margin-left:0;margin-right:0;margin-bottom:0">
       <div class="screen-bar"><i></i><i></i><i></i><span>Anokos at 1920x1080</span></div>
@@ -194,16 +194,17 @@
   <section id="code-map">
     <div class="wrap map-promo">
       <div>
-        <h2>See the whole system in 3D</h2>
-        <p class="section-lede" style="margin-bottom:20px">The code map lays out every function, global variable, class and
-          definition in Anokos, grouped by folder and file, with lines showing what calls and uses what. Select anything to
-          see its parameters, local variables and connections, and jump straight to the source.</p>
+        <h2>Explore the code as a city</h2>
+        <p class="section-lede" style="margin-bottom:20px">The Code City lays out the entire source tree as a map: every folder
+          is a block and every file is a building covered in its own code. Zoom in until you can read every line, tilt it into
+          3D, search for any symbol, and follow arcs to everything a function calls and uses. A
+          <a href="code-map/graph.html">graph view</a> of all 7,900 symbols is also available.</p>
         <div class="stat-row" id="map-stats">
           <div class="stat"><b>3,000+</b><span>functions</span></div>
-          <div class="stat"><b>500+</b><span>source files</span></div>
+          <div class="stat"><b>117,000+</b><span>lines of code</span></div>
           <div class="stat"><b>30,000+</b><span>connections</span></div>
         </div>
-        <a class="btn primary" href="code-map/">Open the code map</a>
+        <a class="btn primary" href="code-map/">Open the Code City</a>
       </div>
       <a class="map-art" href="code-map/" aria-label="Open the code map">
         <svg viewBox="0 0 400 300" aria-hidden="true">
@@ -289,7 +290,7 @@ cd Anokos</pre></div></div>
       var f = function (x) { return x.toLocaleString("en-US"); };
       document.getElementById("map-stats").innerHTML =
         '<div class="stat"><b>' + f(d.meta.counts["function"]) + '</b><span>functions</span></div>' +
-        '<div class="stat"><b>' + f(d.meta.files) + '</b><span>source files</span></div>' +
+        '<div class="stat"><b>' + f(d.meta.lines || 117571) + '</b><span>lines of code</span></div>' +
         '<div class="stat"><b>' + f(d.meta.edges) + '</b><span>connections</span></div>';
     }).catch(function () {});
   })();

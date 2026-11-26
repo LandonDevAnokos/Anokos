@@ -11,9 +11,9 @@ open on GitHub. Anokos runs on x86-64 today, with ARM64 and PowerPC planned.
 > (white text on black) at the display's native resolution, with no desktop environment.
 > See the [roadmap](ROADMAP.md) for what comes next.
 
-**Website:** [landondevanokos.github.io/Anokos](https://landondevanokos.github.io/Anokos/), including a
-[3D code map](https://landondevanokos.github.io/Anokos/code-map/) of every function, variable and class in
-the source and how they connect.
+**Website:** [landondevanokos.github.io/Anokos](https://landondevanokos.github.io/Anokos/), including the
+[Code City](https://landondevanokos.github.io/Anokos/code-map/): the whole source tree as a zoomable map of
+folder blocks and file buildings, readable down to every line, with search and connections between symbols.
 
 ## Roadmap
 
@@ -31,7 +31,7 @@ Planned milestones, in order (details in [ROADMAP.md](ROADMAP.md)):
 | --- | --- |
 | [`src/`](src/) | The Anokos source tree (HolyC `.HC`/`.HH`, DolDoc `.DD`, data files). Starts as the full TempleOS tree. |
 | [`TempleOS/`](TempleOS/) | The original `TempleOS.ISO`, kept **byte-for-byte unmodified** as the reference upstream. Do not edit. |
-| [`docs/`](docs/) | The project website, published with GitHub Pages, including the 3D code map. |
+| [`docs/`](docs/) | The project website, published with GitHub Pages, including the Code City. |
 | [`ROADMAP.md`](ROADMAP.md) | Planned milestones and the order they will be worked on. |
 | [`tools/`](tools/) | Host-side tooling: ISO extraction (`redsea_extract.py`), ISO building (`build_iso.py`), the build driver (`anokos_build.py`) and the code map generator (`codemap.py`). |
 
@@ -119,8 +119,9 @@ TempleOS window manager (the editor, games, graphics demos) don't work in this m
 ## Website and code map
 
 The website lives in [`docs/`](docs/) and is served by GitHub Pages from the `main` branch.
-The 3D code map reads `docs/code-map/codemap.json`, which is generated from `src/` by a fast
-approximate parser. Refresh it after changing the source:
+The Code City (`docs/code-map/index.html`) and the graph view (`docs/code-map/graph.html`) read
+`codemap.json` (symbols and connections, from a fast approximate parser) and `source.json` (the
+source text). Both are generated from `src/`; refresh them after changing the source:
 
 ```sh
 python tools/codemap.py

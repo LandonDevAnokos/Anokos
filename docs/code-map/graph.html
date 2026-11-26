@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anokos Code Graph</title>
+<meta name="description" content="Explore every function, variable and class in the Anokos source code in 3D, and how they connect.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000;
+    --panel: rgba(12, 12, 14, 0.88);
+    --border: #2a2a2e;
+    --text: #f2f2f2;
+    --muted: #9a9aa2;
+    --faint: #5c5c64;
+    --accent: #ffffff;
+    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --k-file: #ffffff;
+    --k-function: #4fc3f7;
+    --k-global: #ffd54f;
+    --k-class: #ce93d8;
+    --k-define: #78909c;
+    --k-asm: #ff8a65;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 14px; overflow: hidden; }
+  a { color: var(--text); }
+  #scene { position: fixed; inset: 0; }
+  #scene canvas { display: block; touch-action: none; }
+
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 2; }
+
+  #left { top: 16px; left: 16px; width: 300px; padding: 14px; max-height: calc(100% - 32px);
+    display: flex; flex-direction: column; gap: 12px; }
+  .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .brand h1 { margin: 0; font-family: var(--mono); font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
+  .brand a { font-size: 12px; color: var(--muted); text-decoration: none; }
+  .brand a:hover { color: var(--text); }
+  .stats { color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+  .search { position: relative; }
+  .search input { width: 100%; padding: 9px 11px; background: #0a0a0c; color: var(--text);
+    border: 1px solid var(--border); border-radius: 7px; font: 13px var(--mono); outline: none; }
+  .search input:focus { border-color: #55555c; }
+  #results { position: absolute; top: calc(100% + 4px); left: 0; right: 0; list-style: none; margin: 0;
+    padding: 4px; background: #0c0c0e; border: 1px solid var(--border); border-radius: 7px;
+    max-height: 320px; overflow-y: auto; display: none; z-index: 3; }
+  #results li { padding: 6px 8px; border-radius: 5px; cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+  #results li.active, #results li:hover { background: #1c1c20; }
+  #results .rname { font-family: var(--mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #results .rfile { color: var(--faint); font-size: 11px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 6px; }
+  .kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+  .kinds label, .toggle { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 13px; user-select: none; }
+  .kinds input, .toggle input { accent-color: #ddd; margin: 0; }
+  .swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .kinds .n { color: var(--faint); font-size: 11px; margin-left: auto; }
+  .hint { color: var(--faint); font-size: 11.5px; line-height: 1.5; }
+
+  #details { top: 16px; right: 16px; width: 360px; max-height: calc(100% - 32px); overflow-y: auto;
+    padding: 16px; display: none; }
+  #details .close { position: absolute; top: 10px; right: 10px; background: none; border: 0; color: var(--muted);
+    font-size: 18px; cursor: pointer; padding: 4px 8px; }
+  #details .close:hover { color: var(--text); }
+  .d-kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 6px; }
+  .d-name { font-family: var(--mono); font-size: 17px; font-weight: 600; margin: 6px 0 4px; word-break: break-all; padding-right: 24px; }
+  .d-loc { font-size: 12px; color: var(--muted); }
+  .d-loc a { color: var(--muted); }
+  .d-loc a:hover { color: var(--text); }
+  .d-sig { font-family: var(--mono); font-size: 12px; background: #0a0a0c; border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; margin: 10px 0 4px; white-space: pre-wrap; word-break: break-word; color: #d6d6d6; }
+  .group { margin-top: 14px; }
+  .group h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { font-family: var(--mono); font-size: 11.5px; padding: 3px 7px; border-radius: 5px; background: #16161a;
+    border: 1px solid #222227; color: #dcdcdc; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+  .chip:hover { border-color: #46464e; }
+  .chip.plain { cursor: default; }
+  .chip .ln { color: var(--faint); font-size: 10.5px; }
+  .more { font-size: 11.5px; color: var(--faint); padding: 3px 2px; }
+
+  #tooltip { position: fixed; pointer-events: none; z-index: 4; background: #0c0c0e; border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 8px; font-size: 12px; display: none; max-width: 340px; }
+  #tooltip b { font-family: var(--mono); font-weight: 600; }
+  #tooltip span { color: var(--muted); }
+
+  .label { font-family: var(--mono); color: #e8e8e8; pointer-events: auto; cursor: pointer; white-space: nowrap;
+    text-shadow: 0 0 6px #000, 0 0 2px #000; user-select: none; }
+  .label.top { font-size: 15px; font-weight: 600; letter-spacing: 0.04em; }
+  .label.dir { font-size: 11.5px; color: #b8b8be; }
+  .label:hover { color: #fff; }
+
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 5; font-family: var(--mono);
+    color: var(--muted); background: var(--bg); }
+
+  #toggle-left { display: none; }
+
+  @media (max-width: 760px) {
+    #left { top: 10px; left: 10px; right: 10px; width: auto; padding: 10px; gap: 8px; max-height: 60%; }
+    #left .collapsible { display: none; }
+    #left.open .collapsible { display: block; }
+    #toggle-left { display: inline-block; background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 6px; font-size: 12px; padding: 3px 8px; cursor: pointer; }
+    #details { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; max-height: 48%; }
+    .label.dir { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="loading">Loading the Anokos source map...</div>
+
+<aside id="left" class="panel">
+  <div class="brand">
+    <h1>Anokos Code Graph</h1>
+    <span><button id="toggle-left" type="button">Filters</button> <a href="./">City view</a> &middot; <a href="../">Home</a></span>
+  </div>
+  <div class="search">
+    <input id="search" type="search" placeholder="Search functions, variables, classes..." autocomplete="off" spellcheck="false" aria-label="Search symbols">
+    <ul id="results" role="listbox"></ul>
+  </div>
+  <div class="collapsible">
+    <div class="stats" id="stats"></div>
+  </div>
+  <div class="collapsible">
+    <div class="section-title">Show</div>
+    <div class="kinds" id="kinds"></div>
+  </div>
+  <div class="collapsible">
+    <div class="section-title">Connections</div>
+    <label class="toggle"><input type="checkbox" id="all-edges"> Show all connections</label>
+  </div>
+  <div class="collapsible hint">
+    Drag to rotate, scroll or pinch to zoom, right-drag to pan.
+    Click a point to see its details and connections. Click a folder name to fly to it.
+  </div>
+</aside>
+
+<aside id="details" class="panel" aria-live="polite"></aside>
+<div id="tooltip"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
+
+const KIND_COLORS = { file: "#ffffff", function: "#4fc3f7", global: "#ffd54f", class: "#ce93d8", define: "#78909c", asm: "#ff8a65" };
+const KIND_LABELS = { file: "Files", function: "Functions", global: "Global variables", class: "Classes", define: "#defines", asm: "Asm labels" };
+const KIND_SIZE   = { file: 16, function: 9, global: 7, class: 10, define: 5, asm: 7 };
+const EDGE_COLORS = { calls: "#4fc3f7", uses: "#ffd54f", type: "#ce93d8", inherits: "#f48fb1", includes: "#ffffff", runs: "#81c784" };
+const EDGE_TEXT = {
+  out: { calls: "Calls", uses: "Uses", type: "Uses types", inherits: "Inherits from", includes: "Includes", runs: "Runs at top level" },
+  in:  { calls: "Called by", uses: "Used by", type: "Used as a type by", inherits: "Inherited by", includes: "Included by", runs: "Run by" },
+};
+const LIST_LIMIT = 150;
+
+const data = await (await fetch("codemap.json")).json();
+const { nodes, edges, details, files, kinds, edgeKinds } = data;
+const N = nodes.length;
+const kindOf = i => kinds[nodes[i][0]];
+const fileOf = i => files[nodes[i][2]];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// adjacency
+const outAdj = Array.from({ length: N }, () => []);
+const inAdj = Array.from({ length: N }, () => []);
+for (const [a, b, t] of edges) { outAdj[a].push([b, t]); inAdj[b].push([a, t]); }
+
+// ---------- renderer
+const host = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+host.appendChild(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+Object.assign(labelRenderer.domElement.style, { position: "absolute", inset: "0", pointerEvents: "none" });
+host.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, 60000);
+camera.position.set(0, 1200, 7200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 30;
+controls.maxDistance = 20000;
+
+// ---------- points
+const pos = new Float32Array(N * 3), col = new Float32Array(N * 3), size = new Float32Array(N), alpha = new Float32Array(N);
+const baseColor = [];
+for (let i = 0; i < N; i++) {
+  const n = nodes[i];
+  pos.set([n[4], n[5], n[6]], i * 3);
+  const c = new THREE.Color(KIND_COLORS[kindOf(i)]);
+  baseColor.push(c);
+}
+const geo = new THREE.BufferGeometry();
+geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+geo.setAttribute("size", new THREE.BufferAttribute(size, 1));
+geo.setAttribute("alpha", new THREE.BufferAttribute(alpha, 1));
+const pointMat = new THREE.ShaderMaterial({
+  uniforms: { scale: { value: innerHeight * renderer.getPixelRatio() } },
+  vertexShader: `
+    attribute float size; attribute float alpha; attribute vec3 color;
+    varying vec3 vColor; varying float vAlpha; uniform float scale;
+    void main() {
+      vColor = color; vAlpha = alpha;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = size > 0.0 ? clamp(size * scale / -mv.z, 2.0, 34.0) : 0.0;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor; varying float vAlpha;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      if (d > 0.5) discard;
+      gl_FragColor = vec4(vColor, vAlpha * smoothstep(0.5, 0.36, d));
+    }`,
+  transparent: true, depthWrite: false,
+});
+const points = new THREE.Points(geo, pointMat);
+scene.add(points);
+
+// ---------- edges
+function edgeGeometry(list) {
+  const p = new Float32Array(list.length * 6), c = new Float32Array(list.length * 6);
+  list.forEach(([a, b, t], k) => {
+    p.set([pos[a * 3], pos[a * 3 + 1], pos[a * 3 + 2], pos[b * 3], pos[b * 3 + 1], pos[b * 3 + 2]], k * 6);
+    const ec = new THREE.Color(EDGE_COLORS[edgeKinds[t]]);
+    c.set([ec.r, ec.g, ec.b, ec.r, ec.g, ec.b], k * 6);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+  return g;
+}
+const allEdges = new THREE.LineSegments(new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.07, depthWrite: false, blending: THREE.AdditiveBlending }));
+allEdges.visible = false;
+scene.add(allEdges);
+const selEdges = new THREE.LineSegments(new THREE.BufferGeometry(),
+  new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false }));
+scene.add(selEdges);
+
+// ---------- labels for folders
+const labelObjs = [];
+function addLabel(text, x, y, z, cls) {
+  const el = document.createElement("div");
+  el.className = "label " + cls;
+  el.textContent = text;
+  el.addEventListener("click", () => flyTo(new THREE.Vector3(x, y, z), cls === "top" ? 2600 : 900));
+  const obj = new CSS2DObject(el);
+  obj.position.set(x, y, z);
+  scene.add(obj);
+  labelObjs.push({ obj, cls, pos: new THREE.Vector3(x, y, z) });
+}
+for (const [name, x, y, z] of data.tops) addLabel(name === "(root)" ? "/ (root files)" : name + "/", x, y + 40, z, "top");
+for (const [name, x, y, z] of data.dirs) if (name.includes("/")) addLabel(name.split("/").slice(1).join("/") + "/", x, y, z, "dir");
+
+// ---------- state
+const visibleKinds = new Set(kinds.filter(k => k !== "define"));
+let selected = -1;
+let neighbors = new Set();
+
+function refresh() {
+  const sel = selected >= 0;
+  for (let i = 0; i < N; i++) {
+    const k = kindOf(i);
+    const shown = visibleKinds.has(k) || i === selected || neighbors.has(i);
+    let s = shown ? KIND_SIZE[k] : 0, a = 0.9, c = baseColor[i];
+    if (sel) {
+      if (i === selected) { s *= 2.2; a = 1; }
+      else if (neighbors.has(i)) { s *= 1.4; a = 1; }
+      else { a = 0.12; }
+    }
+    size[i] = s; alpha[i] = a;
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  geo.attributes.size.needsUpdate = geo.attributes.alpha.needsUpdate = geo.attributes.color.needsUpdate = true;
+
+  const showAll = document.getElementById("all-edges").checked;
+  if (showAll && !allEdges.geometry.attributes.position) {
+    allEdges.geometry.dispose();
+    allEdges.geometry = edgeGeometry(edges);
+  }
+  allEdges.visible = showAll;
+  allEdges.material.opacity = sel ? 0.025 : 0.07;
+
+  selEdges.geometry.dispose();
+  selEdges.geometry = sel ? edgeGeometry(
+    outAdj[selected].map(([b, t]) => [selected, b, t]).concat(inAdj[selected].map(([a, t]) => [a, selected, t]))
+  ) : new THREE.BufferGeometry();
+}
+
+// ---------- details panel
+const detailsEl = document.getElementById("details");
+function chip(i) {
+  return `<span class="chip" data-node="${i}"><span class="swatch" style="background:${KIND_COLORS[kindOf(i)]}"></span>${esc(nodes[i][1])}</span>`;
+}
+function group(title, list) {
+  if (!list.length) return "";
+  const shown = list.slice(0, LIST_LIMIT).join("");
+  const more = list.length > LIST_LIMIT ? `<span class="more">and ${list.length - LIST_LIMIT} more</span>` : "";
+  return `<div class="group"><h3>${esc(title)} (${list.length})</h3><div class="chips">${shown}${more}</div></div>`;
+}
+function srcLink(i, line) {
+  return `${data.meta.repo}${fileOf(i).split("/").map(encodeURIComponent).join("/")}#L${line}`;
+}
+function showDetails(i) {
+  const [k, name, , line] = nodes[i];
+  const kind = kinds[k], d = details[i] || {};
+  let html = `<button class="close" type="button" aria-label="Close">&times;</button>
+    <div class="d-kind" style="color:${KIND_COLORS[kind]}"><span class="swatch" style="background:${KIND_COLORS[kind]}"></span>${esc(kind === "global" ? "global variable" : kind === "asm" ? "asm label" : kind)}</div>
+    <div class="d-name">${esc(name)}</div>
+    <div class="d-loc"><a href="${srcLink(i, line)}" target="_blank" rel="noopener">src/${esc(fileOf(i))}${kind === "file" ? "" : ":" + line}</a></div>`;
+  if (d.sig && kind !== "file") html += `<div class="d-sig">${esc(d.sig)}</div>`;
+  if (d.decl === "intrinsic") html += `<div class="d-loc">Compiler intrinsic</div>`;
+  if (d.label) html += `<div class="d-loc">Implemented by asm label ${esc(d.label)}</div>`;
+  if (d.params) html += group("Parameters", d.params.map(p => `<span class="chip plain">${esc(p)}</span>`));
+  if (d.locals) html += group("Local variables", d.locals.map(([n, l]) =>
+    `<a class="chip" href="${srcLink(i, l)}" target="_blank" rel="noopener">${esc(n)}<span class="ln">:${l}</span></a>`));
+  if (d.members) html += group("Members", d.members.map(([n, l]) =>
+    `<a class="chip" href="${srcLink(i, l)}" target="_blank" rel="noopener">${esc(n)}<span class="ln">:${l}</span></a>`));
+  if (kind === "file") {
+    const syms = [];
+    for (let j = 0; j < N; j++) if (nodes[j][2] === nodes[i][2] && j !== i) syms.push(chip(j));
+    html += group("Contains", syms);
+  }
+  for (const dir of ["out", "in"]) {
+    const adj = dir === "out" ? outAdj[i] : inAdj[i];
+    for (const ek of edgeKinds) {
+      const t = edgeKinds.indexOf(ek);
+      const list = [...new Set(adj.filter(e => e[1] === t).map(e => e[0]))]
+        .sort((a, b) => nodes[a][1].localeCompare(nodes[b][1]));
+      html += group(EDGE_TEXT[dir][ek], list.map(chip));
+    }
+  }
+  detailsEl.innerHTML = html;
+  detailsEl.style.display = "block";
+  detailsEl.scrollTop = 0;
+}
+detailsEl.addEventListener("click", e => {
+  if (e.target.closest(".close")) { select(-1); return; }
+  const c = e.target.closest("[data-node]");
+  if (c) select(+c.dataset.node, true);
+});
+
+function select(i, fly = false) {
+  selected = i;
+  neighbors = new Set();
+  if (i >= 0) {
+    for (const [b] of outAdj[i]) neighbors.add(b);
+    for (const [a] of inAdj[i]) neighbors.add(a);
+    showDetails(i);
+    if (fly) flyTo(new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]), kindOf(i) === "file" ? 450 : 260);
+    history.replaceState(null, "", "#" + encodeURIComponent(nodes[i][1]) + "@" + encodeURIComponent(fileOf(i)));
+  } else {
+    detailsEl.style.display = "none";
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  refresh();
+}
+
+// ---------- camera flight
+let flight = null;
+function flyTo(target, dist) {
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  flight = {
+    t0: performance.now(), dur: 900,
+    fromPos: camera.position.clone(), fromTarget: controls.target.clone(),
+    toPos: target.clone().add(dir.multiplyScalar(dist)), toTarget: target.clone(),
+  };
+}
+
+// ---------- picking
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+function pick(x, y) {
+  mouse.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(mouse, camera);
+  raycaster.params.Points.threshold = Math.max(4, camera.position.distanceTo(controls.target) * 0.008);
+  let best = -1, bestD = Infinity;
+  for (const hit of raycaster.intersectObject(points)) {
+    const i = hit.index;
+    if (!size[i] || (selected >= 0 && alpha[i] < 0.5 && i !== selected)) continue;
+    const d = hit.distanceToRay / Math.max(1, size[i]) + hit.distance * 1e-5;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+const tooltip = document.getElementById("tooltip");
+let down = null;
+renderer.domElement.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener("pointermove", e => {
+  if (e.pointerType !== "mouse") return;
+  const i = pick(e.clientX, e.clientY);
+  if (i >= 0) {
+    tooltip.innerHTML = `<b>${esc(nodes[i][1])}</b> <span>${esc(kindOf(i))} &middot; ${esc(fileOf(i))}</span>`;
+    tooltip.style.display = "block";
+    tooltip.style.left = Math.min(e.clientX + 14, innerWidth - tooltip.offsetWidth - 8) + "px";
+    tooltip.style.top = (e.clientY + 14) + "px";
+    renderer.domElement.style.cursor = "pointer";
+  } else {
+    tooltip.style.display = "none";
+    renderer.domElement.style.cursor = "";
+  }
+});
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+  const i = pick(e.clientX, e.clientY);
+  select(i);
+});
+
+// ---------- search
+const searchEl = document.getElementById("search"), resultsEl = document.getElementById("results");
+const lowerNames = nodes.map(n => n[1].toLowerCase());
+let resultIds = [], activeResult = 0;
+function runSearch() {
+  const q = searchEl.value.trim().toLowerCase();
+  resultIds = [];
+  if (q) {
+    const scored = [];
+    for (let i = 0; i < N; i++) {
+      const s = lowerNames[i];
+      const at = s.indexOf(q);
+      if (at < 0) continue;
+      scored.push([(s === q ? 0 : at === 0 ? 1 : 2) * 1000 + s.length + (kindOf(i) === "define" ? 50 : 0), i]);
+    }
+    scored.sort((a, b) => a[0] - b[0]);
+    resultIds = scored.slice(0, 40).map(x => x[1]);
+  }
+  activeResult = 0;
+  resultsEl.innerHTML = resultIds.map((i, k) =>
+    `<li role="option" data-node="${i}" class="${k === 0 ? "active" : ""}"><span class="swatch" style="background:${KIND_COLORS[kindOf(i)]}"></span><span class="rname">${esc(nodes[i][1])}</span><span class="rfile">${esc(fileOf(i))}</span></li>`
+  ).join("") || (q ? `<li class="more">No matches</li>` : "");
+  resultsEl.style.display = q ? "block" : "none";
+}
+function setActive(k) {
+  const items = resultsEl.querySelectorAll("li[data-node]");
+  if (!items.length) return;
+  activeResult = (k + items.length) % items.length;
+  items.forEach((li, j) => li.classList.toggle("active", j === activeResult));
+  items[activeResult].scrollIntoView({ block: "nearest" });
+}
+searchEl.addEventListener("input", runSearch);
+searchEl.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { setActive(activeResult + 1); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { setActive(activeResult - 1); e.preventDefault(); }
+  else if (e.key === "Enter" && resultIds.length) { choose(resultIds[activeResult]); }
+  else if (e.key === "Escape") { searchEl.value = ""; runSearch(); searchEl.blur(); }
+});
+resultsEl.addEventListener("click", e => { const li = e.target.closest("[data-node]"); if (li) choose(+li.dataset.node); });
+function choose(i) {
+  if (!visibleKinds.has(kindOf(i))) { visibleKinds.add(kindOf(i)); syncKindBoxes(); }
+  resultsEl.style.display = "none";
+  searchEl.blur();
+  select(i, true);
+}
+document.addEventListener("click", e => { if (!e.target.closest(".search")) resultsEl.style.display = "none"; });
+
+// ---------- filters
+const counts = {};
+for (const n of nodes) counts[kinds[n[0]]] = (counts[kinds[n[0]]] || 0) + 1;
+const kindsEl = document.getElementById("kinds");
+kindsEl.innerHTML = kinds.map(k => `<label><input type="checkbox" data-kind="${k}"><span class="swatch" style="background:${KIND_COLORS[k]}"></span>${KIND_LABELS[k]}<span class="n">${counts[k] || 0}</span></label>`).join("");
+function syncKindBoxes() { kindsEl.querySelectorAll("input").forEach(b => b.checked = visibleKinds.has(b.dataset.kind)); }
+kindsEl.addEventListener("change", e => {
+  const k = e.target.dataset.kind;
+  e.target.checked ? visibleKinds.add(k) : visibleKinds.delete(k);
+  refresh();
+});
+syncKindBoxes();
+document.getElementById("all-edges").addEventListener("change", refresh);
+document.getElementById("toggle-left").addEventListener("click", () => document.getElementById("left").classList.toggle("open"));
+
+const m = data.meta, fmt = x => x.toLocaleString("en-US");
+document.getElementById("stats").innerHTML =
+  `${fmt(m.counts.function)} functions, ${fmt(m.counts.global)} global variables, ${fmt(m.counts.class)} classes, ` +
+  `${fmt(m.locals)} local variables and ${fmt(m.members)} class members across ${fmt(m.files)} files, ` +
+  `with ${fmt(m.edges)} connections.` + (m.commit ? ` Source: commit <a href="https://github.com/LandonDevAnokos/Anokos/commit/${esc(m.commit)}" target="_blank" rel="noopener">${esc(m.commit)}</a>.` : "");
+
+// ---------- deep links: #Name@path/File.HC
+function fromHash() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (!h) return;
+  const [name, file] = h.split("@");
+  for (let i = 0; i < N; i++)
+    if (nodes[i][1] === name && (!file || fileOf(i) === file)) { choose(i); return; }
+}
+
+// ---------- loop
+function resize() {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+  pointMat.uniforms.scale.value = innerHeight * renderer.getPixelRatio();
+}
+addEventListener("resize", resize);
+const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function frame(now) {
+  if (flight) {
+    const t = Math.min(1, (now - flight.t0) / flight.dur), k = ease(t);
+    camera.position.lerpVectors(flight.fromPos, flight.toPos, k);
+    controls.target.lerpVectors(flight.fromTarget, flight.toTarget, k);
+    if (t >= 1) flight = null;
+  }
+  controls.update();
+  const camDist = camera.position.distanceTo(controls.target);
+  for (const l of labelObjs) l.obj.visible = l.cls === "top" ? camDist > 600 : camera.position.distanceTo(l.pos) < 3200;
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+refresh();
+document.getElementById("loading").remove();
+requestAnimationFrame(frame);
+fromHash();
+addEventListener("hashchange", fromHash);
+</script>
+</body>
+</html>
