@@ -1,0 +1,24 @@
+# Extraction / build output
+/extracted/
+/build/
+/out/
+
+# VM disk images and generated ISOs (the reference ISO in TempleOS/ is tracked)
+*.qcow2
+*.vdi
+*.vmdk
+*.img
+/*.ISO
+/*.iso
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

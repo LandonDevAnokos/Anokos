@@ -1,0 +1,22 @@
+# Store the OS tree byte-exact: DolDoc files mix text with binary sprite
+# data, so git must never convert line endings or treat them as text.
+src/** -text
+TempleOS/** binary
+*.ISO binary
+*.iso binary
+*.BIN binary
+*.DATA binary
+*.GR binary
+
+# Language detection on GitHub
+*.HC linguist-language=HolyC
+*.HH linguist-language=HolyC
+*.DD linguist-documentation
+src/Misc/Bible.TXT linguist-vendored
+src/Adam/AutoComplete/*.DATA linguist-vendored
+src/Demo/WebLogDemo/*.log linguist-vendored
+
+# Host tooling is plain text with LF endings
+tools/** text eol=lf
+*.md text eol=lf
+LICENSE text eol=lf
