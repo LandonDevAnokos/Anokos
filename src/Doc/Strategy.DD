@@ -42,7 +42,7 @@ A three bttn mouse is like a leg you cannot put weight on.  TempleOS just does h
 
 * Whole files are processed almost exclusively, allowing compression.
 
-* $LK,"One language",A="FI:::/Doc/HolyC.DD"$ and compiler for command-line, scripts, songs, automations and code.
+* $LK,"One language",A="FI:::/Doc/TerryC.DD"$ and compiler for command-line, scripts, songs, automations and code.
 
 * One editor/word processor/browser for the command-line window, source code, documentation browser, dialog forms.
 
@@ -50,7 +50,7 @@ A three bttn mouse is like a leg you cannot put weight on.  TempleOS just does h
 
 * No distinction between $FG,2$thread$FG$, $FG,2$process$FG$ or $FG,2$task$FG$.
 
-* The $LK,"Scheduler",A="FI:::/Kernel/Sched.HC"$ is for home systems.  It is not preemptiove.  Disk requests are not broken-up, so sharing is bad.  It's wonderfully simple.
+* The $LK,"Scheduler",A="FI:::/Kernel/Sched.TC"$ is for home systems.  It is not preemptiove.  Disk requests are not broken-up, so sharing is bad.  It's wonderfully simple.
 
 * $LK,"MultiCore",A="FI:::/Doc/MultiCore.DD"$ is done $FG,2$master/slave$FG$, instead of $FG,2$SMP$FG$.  $FG,2$Core0$FG$ applications explicitly assigns jobs.  Locks are present allowing multicore file, heap, and hardware access, though.
 

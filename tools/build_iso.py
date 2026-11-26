@@ -8,7 +8,7 @@ The first 88 blocks (ISO9660 descriptors, El Torito catalog and the DVD stage-1
 boot loader) are taken from the reference ISO and patched for the new layout.
 The rest of the image is a RedSea file system written from <tree_dir>.
 
-Files whose type TempleOS stores compressed (HC, DD, ...) are written as
+Files whose type TempleOS stores compressed (TC, DD, ...) are written as
 "<name>.Z" with a CT_NONE (stored, uncompressed) archive header, which the
 kernel's ExpandBuf() reads like any other .Z file.
 """
@@ -31,7 +31,7 @@ ATTR_CONTIGUOUS = 0x800
 CT_NONE = 1
 DATETIME = 0x000B3F0FF1362161  # CDate copied from the reference ISO
 
-COMPRESS_EXTS = {"HC", "HH", "DD", "IN", "PRJ", "MAP", "BIN", "DATA", "TXT", "GR"}
+COMPRESS_EXTS = {"TC", "TH", "HC", "HH", "DD", "IN", "PRJ", "MAP", "BIN", "DATA", "TXT", "GR"}
 
 
 def wants_z(rel_path):

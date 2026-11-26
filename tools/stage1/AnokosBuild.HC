@@ -1,6 +1,8 @@
 //Anokos stage-1 build. Runs inside stock TempleOS (booted from the
 //stage-1 ISO made by tools/anokos_build.py), compiles the Anokos
-//kernel from ::/AnokosSrc and sends it to the host over COM1.
+//compiler and kernel from ::/AnokosSrc and sends them to the host
+//over COM1. Stock TempleOS only knows .HC/.HH source files, so the
+//host copies the TerryC sources there under those names.
 
 #define SER_BASE	0x3F8
 
@@ -78,13 +80,19 @@ try {
   CopyTree("::/AnokosSrc/Kernel","B:/Kernel");
   CopyTree("::/AnokosSrc/Compiler","B:/Compiler");
   Cd("B:/");
-  //DoDistro's config answers, plus one Enter for the hardware probe prompt.
-  In("TB\nScale2Mem(2048,0x40000)\nT\n\n\n\n\n");
-  anokos_errs=Cmp("/Kernel/Kernel","Kernel",,':');
+  anokos_errs=Cmp("/Compiler/Compiler","Compiler",,':');
+  if (!anokos_errs) {
+    Cd("B:/");
+    //DoDistro's config answers, plus one Enter for the hardware probe prompt.
+    In("TB\nScale2Mem(2048,0x40000)\nT\n\n\n\n\n");
+    anokos_errs=Cmp("/Kernel/Kernel","Kernel",,':');
+  }
 } catch
   PutExcept;
 SerPrint("\n@@ERRORS %d\n",anokos_errs);
 if (!anokos_errs) {
+  SerSendFile("B:/Compiler/Compiler.BIN.Z","COMPILER");
+  SerSendFile("B:/Compiler/Compiler.MAP.Z","CMAP");
   SerSendFile("B:/Kernel/Kernel.BIN.Z","KERNEL");
   if (!SerSendFile("B:/Kernel/Kernel.MAP.Z","MAP"))
     SerSendFile("B:/Kernel.MAP.Z","MAP");

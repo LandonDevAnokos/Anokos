@@ -32,7 +32,7 @@ See [Building and running](README.md#building-and-running). In short:
   `src/0000Boot/0000Kernel.BIN.C` and `src/Kernel/Kernel.MAP` along with your source change.
 - After changing source files, run `python tools/codemap.py` and commit the updated
   `docs/code-map/codemap.json` and `docs/code-map/source.json` so the website's Code City stays current.
-- HolyC source files are DolDoc documents: write a literal `$` as `$$`. JIT-compiled globals
+- TerryC source files (`.TC`/`.TH`) are DolDoc documents: write a literal `$` as `$$`. JIT-compiled globals
   start out as garbage, not zero, so initialize them explicitly.
 
 ## Ground rules
@@ -42,7 +42,7 @@ See [Building and running](README.md#building-and-running). In short:
   sprite data after the text; editors that normalize line endings, trim trailing whitespace or
   re-encode files can corrupt them. Use an editor setting that preserves bytes, or edit inside
   the OS itself.
-- Follow the existing HolyC style in the file you're editing (tabs for indentation, the existing
+- Follow the existing TerryC style in the file you're editing (tabs for indentation, the existing
   naming conventions such as `CamelCase` functions and `C`-prefixed classes).
 - Only contribute code you have the right to contribute. By submitting a contribution you agree
   to release it under the project's [LICENSE](LICENSE).

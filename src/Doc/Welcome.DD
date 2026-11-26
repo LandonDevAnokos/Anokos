@@ -13,45 +13,45 @@ It's a kayak, not a Titanic -- it will crash if you do something wrong.  You qui
 
 Conventional thinking is "failure is not an option" for general purpose operating systems.  Since this OS is used in addition to Windows or Linux, however, failure is an option -- just use Windows or Linux if you can't do something.  I cherry-pick what it will and won't do, to make it maximally beautiful.  The following applications more or less form a basis that spans the range of use that TempleOS is intended for:
 
-$LK,"/Demo/Games/BattleLines.HC",A="FI:::/Demo/Games/BattleLines.HC"$
-$LK,"/Demo/Games/BigGuns.HC",A="FI:::/Demo/Games/BigGuns.HC"$
-$LK,"/Demo/Games/BlackDiamond.HC",A="FI:::/Demo/Games/BlackDiamond.HC"$
-$LK,"/Demo/Games/BomberGolf.HC",A="FI:::/Demo/Games/BomberGolf.HC"$
-$LK,"/Demo/Games/CastleFrankenstein.HC",A="FI:::/Demo/Games/CastleFrankenstein.HC"$
-$LK,"/Demo/Games/CharDemo.HC",A="FI:::/Demo/Games/CharDemo.HC"$
-$LK,"/Demo/Games/CircleTrace.HC",A="FI:::/Demo/Games/CircleTrace.HC"$
-$LK,"/Demo/Games/Collision.HC",A="FI:::/Demo/Games/Collision.HC"$
-$LK,"/Demo/Games/Digits.HC",A="FI:::/Demo/Games/Digits.HC"$
-$LK,"/Demo/Games/DunGen.HC",A="FI:::/Demo/Games/DunGen.HC"$
-$LK,"/Demo/Games/Talons.HC",A="FI:::/Demo/Games/Talons.HC"$
-$LK,"/Demo/Games/ElephantWalk.HC",A="FI:::/Demo/Games/ElephantWalk.HC"$
-$LK,"/Demo/Games/FlapBat.HC",A="FI:::/Demo/Games/FlapBat.HC"$
-$LK,"/Demo/Games/FlatTops.HC",A="FI:::/Demo/Games/FlatTops.HC"$
-$LK,"/Demo/Games/Halogen.HC",A="FI:::/Demo/Games/Halogen.HC"$
-$LK,"/Demo/Games/MassSpring.HC",A="FI:::/Demo/Games/MassSpring.HC"$
-$LK,"/Demo/Games/Maze.HC",A="FI:::/Demo/Games/Maze.HC"$
-$LK,"/Demo/Games/RainDrops.HC",A="FI:::/Demo/Games/RainDrops.HC"$
-$LK,"/Demo/Games/RawHide.HC",A="FI:::/Demo/Games/RawHide.HC"$
-$LK,"/Demo/Games/Rocket.HC",A="FI:::/Demo/Games/Rocket.HC"$
-$LK,"/Demo/Games/RocketScience.HC",A="FI:::/Demo/Games/RocketScience.HC"$
-$LK,"/Demo/Games/Squirt.HC",A="FI:::/Demo/Games/Squirt.HC"$
-$LK,"/Demo/Games/TheDead.HC",A="FI:::/Demo/Games/TheDead.HC"$
-$LK,"/Demo/Games/TicTacToe.HC",A="FI:::/Demo/Games/TicTacToe.HC"$
-$LK,"/Demo/Games/TreeCheckers.HC",A="FI:::/Demo/Games/TreeCheckers.HC"$
-$LK,"/Demo/Games/Varoom.HC",A="FI:::/Demo/Games/Varoom.HC"$
-$LK,"/Demo/Games/Wenceslas.HC",A="FI:::/Demo/Games/Wenceslas.HC"$
-$LK,"/Demo/Games/Whap.HC",A="FI:::/Demo/Games/Whap.HC"$
-$LK,"/Demo/Games/Zing.HC",A="FI:::/Demo/Games/Zing.HC"$
-$LK,"/Demo/Games/ZoneOut.HC",A="FI:::/Demo/Games/ZoneOut.HC"$
-$LK,"/Apps/Psalmody/Examples/childish.HC",A="FI:::/Apps/Psalmody/Examples/childish.HC"$
-$LK,"/Apps/Psalmody/Examples/night.HC",A="FI:::/Apps/Psalmody/Examples/night.HC"$
-$LK,"/Apps/Psalmody/Examples/prosper.HC",A="FI:::/Apps/Psalmody/Examples/prosper.HC"$
+$LK,"/Demo/Games/BattleLines.TC",A="FI:::/Demo/Games/BattleLines.TC"$
+$LK,"/Demo/Games/BigGuns.TC",A="FI:::/Demo/Games/BigGuns.TC"$
+$LK,"/Demo/Games/BlackDiamond.TC",A="FI:::/Demo/Games/BlackDiamond.TC"$
+$LK,"/Demo/Games/BomberGolf.TC",A="FI:::/Demo/Games/BomberGolf.TC"$
+$LK,"/Demo/Games/CastleFrankenstein.TC",A="FI:::/Demo/Games/CastleFrankenstein.TC"$
+$LK,"/Demo/Games/CharDemo.TC",A="FI:::/Demo/Games/CharDemo.TC"$
+$LK,"/Demo/Games/CircleTrace.TC",A="FI:::/Demo/Games/CircleTrace.TC"$
+$LK,"/Demo/Games/Collision.TC",A="FI:::/Demo/Games/Collision.TC"$
+$LK,"/Demo/Games/Digits.TC",A="FI:::/Demo/Games/Digits.TC"$
+$LK,"/Demo/Games/DunGen.TC",A="FI:::/Demo/Games/DunGen.TC"$
+$LK,"/Demo/Games/Talons.TC",A="FI:::/Demo/Games/Talons.TC"$
+$LK,"/Demo/Games/ElephantWalk.TC",A="FI:::/Demo/Games/ElephantWalk.TC"$
+$LK,"/Demo/Games/FlapBat.TC",A="FI:::/Demo/Games/FlapBat.TC"$
+$LK,"/Demo/Games/FlatTops.TC",A="FI:::/Demo/Games/FlatTops.TC"$
+$LK,"/Demo/Games/Halogen.TC",A="FI:::/Demo/Games/Halogen.TC"$
+$LK,"/Demo/Games/MassSpring.TC",A="FI:::/Demo/Games/MassSpring.TC"$
+$LK,"/Demo/Games/Maze.TC",A="FI:::/Demo/Games/Maze.TC"$
+$LK,"/Demo/Games/RainDrops.TC",A="FI:::/Demo/Games/RainDrops.TC"$
+$LK,"/Demo/Games/RawHide.TC",A="FI:::/Demo/Games/RawHide.TC"$
+$LK,"/Demo/Games/Rocket.TC",A="FI:::/Demo/Games/Rocket.TC"$
+$LK,"/Demo/Games/RocketScience.TC",A="FI:::/Demo/Games/RocketScience.TC"$
+$LK,"/Demo/Games/Squirt.TC",A="FI:::/Demo/Games/Squirt.TC"$
+$LK,"/Demo/Games/TheDead.TC",A="FI:::/Demo/Games/TheDead.TC"$
+$LK,"/Demo/Games/TicTacToe.TC",A="FI:::/Demo/Games/TicTacToe.TC"$
+$LK,"/Demo/Games/TreeCheckers.TC",A="FI:::/Demo/Games/TreeCheckers.TC"$
+$LK,"/Demo/Games/Varoom.TC",A="FI:::/Demo/Games/Varoom.TC"$
+$LK,"/Demo/Games/Wenceslas.TC",A="FI:::/Demo/Games/Wenceslas.TC"$
+$LK,"/Demo/Games/Whap.TC",A="FI:::/Demo/Games/Whap.TC"$
+$LK,"/Demo/Games/Zing.TC",A="FI:::/Demo/Games/Zing.TC"$
+$LK,"/Demo/Games/ZoneOut.TC",A="FI:::/Demo/Games/ZoneOut.TC"$
+$LK,"/Apps/Psalmody/Examples/childish.TC",A="FI:::/Apps/Psalmody/Examples/childish.TC"$
+$LK,"/Apps/Psalmody/Examples/night.TC",A="FI:::/Apps/Psalmody/Examples/night.TC"$
+$LK,"/Apps/Psalmody/Examples/prosper.TC",A="FI:::/Apps/Psalmody/Examples/prosper.TC"$
 
 Two things to know about TempleOS are that $UL,1$tasks$UL,0$ have $LK,"MAlloc",A="MN:MAlloc"$/$LK,"Free",A="MN:Free"$ heap memory, not applications, and tasks have compiler symbol tables that persist at a scope like environment variables in other operating systems, and the symbols can include functions.
 
-For other operating systems, I hated learning one language for command line scripts and another for programming.  With $FG,2$TempleOS$FG$, the command line feeds right into the $LK,"HolyC",A="FI:::/Doc/HolyC.DD"$ compiler, line by line, and it places code into memory it $LK,"MAlloc",A="MN:MAlloc"$()s.  The compiler is paused at the command line, waiting for input.  Naturally, you $FG,2$#include$FG$ a program to load it into memory and, usually, start it.
+For other operating systems, I hated learning one language for command line scripts and another for programming.  With $FG,2$TempleOS$FG$, the command line feeds right into the $LK,"TerryC",A="FI:::/Doc/TerryC.DD"$ compiler, line by line, and it places code into memory it $LK,"MAlloc",A="MN:MAlloc"$()s.  The compiler is paused at the command line, waiting for input.  Naturally, you $FG,2$#include$FG$ a program to load it into memory and, usually, start it.
 
-During the boot process, many files get $LK,"compiled",A="FI:::/StartOS.HC"$ before you have access to the command line.  (Don't worry, booting takes only two seconds.)  All the header declarations for the operating system are compiled and are available for use in your programs without needing to $FG,2$#include $FG$them.  Everything is truly compiled to native $FG,2$$TX,"x86_64",HTML="http://en.wikipedia.org/wiki/Amd64#AMD64"$$FG$ machine code, nothing is $FG,2$interpreted$FG$ and there is no $FG,2$byte code$FG$.
+During the boot process, many files get $LK,"compiled",A="FI:::/StartOS.TC"$ before you have access to the command line.  (Don't worry, booting takes only two seconds.)  All the header declarations for the operating system are compiled and are available for use in your programs without needing to $FG,2$#include $FG$them.  Everything is truly compiled to native $FG,2$$TX,"x86_64",HTML="http://en.wikipedia.org/wiki/Amd64#AMD64"$$FG$ machine code, nothing is $FG,2$interpreted$FG$ and there is no $FG,2$byte code$FG$.
 
 Statements at the global scope -- outside the scope of functions -- execute immediately.  There is no $FG,2$main()$FG$ function.  Instead, you give meaningful names to what would be $FG,2$main()$FG$ functions and you invoke them by calling them with a statement in the global scope, usually at the bottom of your file.
 
@@ -69,11 +69,11 @@ $FG$I didn't like that, so I made parentheses optional on calls with no args and
 
 The syntax change created an ambiguity when specifying function addresses, like for calling $LK,"QSort",A="MN:QSort"$().  To resolve it, I  made a '$FG,2$&$FG$' required in front of function names when specifying an address of a function, which is better anyway.
 
-Once I was no longer using standard C/C++ syntax, I decided to change everything I didn't like and call it $LK,"HolyC",A="FI:::/Doc/HolyC.DD"$.  Here are the new $LK,"operator precedence",A="FF:::/Doc/HolyC.DD,operator precedence"$ rules.  It's Biblical!  See $LK,"Luke,5:37",A="BF:Luke,5:37"$.
+Once I was no longer using standard C/C++ syntax, I decided to change everything I didn't like and call it $LK,"TerryC",A="FI:::/Doc/TerryC.DD"$.  Here are the new $LK,"operator precedence",A="FF:::/Doc/TerryC.DD,operator precedence"$ rules.  It's Biblical!  See $LK,"Luke,5:37",A="BF:Luke,5:37"$.
 
 There are no object files in TempleOS and, normally, you don't make executable files either, but you can.  That's known as $LK,"Ahead-of-Time",A="FF:::/Doc/Glossary.DD,AOT Compile Mode"$ compilation.  Instead, you $LK,"Just in Time",A="FF:::/Doc/Glossary.DD,JIT Compile Mode"$ compile.
 
-Tasks have no priority and are never removed from the queue.  Instead, they often poll whatever they are waiting on and swap-out.  (Swapping tasks takes half a microsecond and does not involve disk activity or memory maps.)  See $LK,"Scheduler",A="FL:::/Kernel/Sched.HC,1"$.  Polling keeps it simple.  It might be a problem if you had lots of tasks busy, which rarely happens on a home computer.  The order of the tasks in the queue determines front-to-back window order.
+Tasks have no priority and are never removed from the queue.  Instead, they often poll whatever they are waiting on and swap-out.  (Swapping tasks takes half a microsecond and does not involve disk activity or memory maps.)  See $LK,"Scheduler",A="FL:::/Kernel/Sched.TC,1"$.  Polling keeps it simple.  It might be a problem if you had lots of tasks busy, which rarely happens on a home computer.  The order of the tasks in the queue determines front-to-back window order.
 
 The $FG,2$FAT32$FG$ filesystem is supported to makes exchanging files with a dual booted other operating system easy and there is the simple, 64-bit TempleOS $LK,"RedSea",A="FI:::/Doc/RedSea.DD"$ filesystem.  The $LK,"RedSea",A="FI:::/Doc/RedSea.DD"$ has allocation bitmap for clus and all files are stored contiguously.  You can't grow files.
 
@@ -87,9 +87,9 @@ TempleOS is for hobbyist programmers on single user (at a time) home computers, 
 
 There is no distinction between the terms $FG,2$task$FG$, $FG,2$process$FG$ or $FG,2$thread$FG$.  All have a task record, $LK,"CTask",A="MN:CTask"$, pointed to by the $FG,2$FS$FG$ segment reg and are accessed with $FG,4$Fs->$FG$ while $FG,4$Gs->$FG$ points to a $LK,"CCPU",A="MN:CCPU"$ for the current CPU core.  Each task can have just one window, but a task can have children with windows.  (The segment regs are just used as extra regs -- there is nothing segmented about TempleOS' memory.)  It is approximately the case that $FG,2$TempleOS$FG$ is multi-threading, single-processing.
 
-In $FG,2$TempleOS$FG$, $LK,"Adam Task",A="FF:::/Doc/Glossary.DD,Adam Task"$$FG$ refers to the father of all tasks.  He's never supposed to die.  Since tasks inherit the symbols of parents, system-wide stuff is associated with $FG,2$Adam$FG$.  His heap is like kernel memory in other operating systems.  Since $FG,2$Adam$FG$ is immortal, it's safe to alloc objects, not tied to any mortal task, from $FG,2$Adam$FG$'s heap.  He stays in a server mode, taking requests, so you can ask him to $FG,2$#include$FG$ something, placing that code system-wide.  A funny story is that originally I called it the $FG,2$root$FG$ task and even had a $FG,2$/Root$FG$ directory :-)  $FG,2$Adam$FG$ executes $LK,"::/StartOS.HC"$ at boot time.
+In $FG,2$TempleOS$FG$, $LK,"Adam Task",A="FF:::/Doc/Glossary.DD,Adam Task"$$FG$ refers to the father of all tasks.  He's never supposed to die.  Since tasks inherit the symbols of parents, system-wide stuff is associated with $FG,2$Adam$FG$.  His heap is like kernel memory in other operating systems.  Since $FG,2$Adam$FG$ is immortal, it's safe to alloc objects, not tied to any mortal task, from $FG,2$Adam$FG$'s heap.  He stays in a server mode, taking requests, so you can ask him to $FG,2$#include$FG$ something, placing that code system-wide.  A funny story is that originally I called it the $FG,2$root$FG$ task and even had a $FG,2$/Root$FG$ directory :-)  $FG,2$Adam$FG$ executes $LK,"::/StartOS.TC"$ at boot time.
 
-For easy back-ups, place everything you author in your $FG,2$/Home$FG$ directory and subdirectories.  Then, use $LK,"CopyTree",A="MN:CopyTree"$().  That should make upgrading easy, too.  Customizable start-up scripts go in your $FG,2$/Home$FG$ directory.  The default start-up scripts are in the root directory.  Copy the start-up files you wish to customize into $FG,2$/Home$FG$ and modify them.  See $LK,"Home Files",A="FF:::/Doc/GuideLines.DD,/Home Files"$.  You can make your own distro that includes everything and is a bootable live CD with $LK,"::/Misc/DoDistro.HC"$.
+For easy back-ups, place everything you author in your $FG,2$/Home$FG$ directory and subdirectories.  Then, use $LK,"CopyTree",A="MN:CopyTree"$().  That should make upgrading easy, too.  Customizable start-up scripts go in your $FG,2$/Home$FG$ directory.  The default start-up scripts are in the root directory.  Copy the start-up files you wish to customize into $FG,2$/Home$FG$ and modify them.  See $LK,"Home Files",A="FF:::/Doc/GuideLines.DD,/Home Files"$.  You can make your own distro that includes everything and is a bootable live CD with $LK,"::/Misc/DoDistro.TC"$.
 
 Typically, your usage pattern through the day will be repeatedly left or right clicking on filenames in a cmd line $LK,"Dir",A="MN:Dir"$() listing.  You left-click files to edit them and right-click to $FG,2$#include$FG$ them.  To begin a project, type $LK,"Ed",A="MN:Ed"$("filename");, supplying a filename.  You can also run programs with $FG,2$<F5>$FG$ when in the editor. $FG,2$<ESC>$FG$ to save and exit the file.  You'll need to do a new $LK,"Dir",A="MN:Dir"$() cmd, periodically, so make a macro on your PersonalMenu.  Access your PersonalMenu by pressing $FG,2$<CTRL-m>$FG$, cursoring until you are on top of it and pressing $FG,2$<SPACE>$FG$.
 
@@ -104,13 +104,13 @@ $FG,2$<ALT-SHIFT-a>$FG$ closes AutoComplete.
 $FG,2$<ALT-a>$FG$ brings back AutoComplete.
 $FG,2$<ALT-v>$FG$ vertically tiles windows.
 $FG,2$<ALT-h>$FG$ horizontally tiles windows.
-The $FG,2$ALT$FG$ keys are defined in $LK,"~/HomeKeyPlugIns.HC"$.  You can customize them.
+The $FG,2$ALT$FG$ keys are defined in $LK,"~/HomeKeyPlugIns.TC"$.  You can customize them.
 
 $FG,2$<CTRL-ALT-t>$FG$ new terminal window.
 $FG,2$<CTRL-ALT-n>$FG$ switches to the next window.
 $FG,2$<CTRL-ALT-x>$FG$ kills a window.
 
-$LK,"Find",A="MN:Find"$() is your best friend.  There's a wrapper function called $LK,"F",A="MN:F"$() in your $FG,2$~/HomeWrappers.HC.Z$FG$ file.  Feel free to make wrapper functions for functions you use often and customize the args.  By the way, $LK,"Find",A="MN:Find"$() or $LK,"R",A="MN:R"$() can be used to replace strings across multiple files.  You can access $LK,"Find",A="MN:Find"$() using $FG,2$<CTRL-SHIFT-f>$FG$.
+$LK,"Find",A="MN:Find"$() is your best friend.  There's a wrapper function called $LK,"F",A="MN:F"$() in your $FG,2$~/HomeWrappers.TC.Z$FG$ file.  Feel free to make wrapper functions for functions you use often and customize the args.  By the way, $LK,"Find",A="MN:Find"$() or $LK,"R",A="MN:R"$() can be used to replace strings across multiple files.  You can access $LK,"Find",A="MN:Find"$() using $FG,2$<CTRL-SHIFT-f>$FG$.
 
 As you browse code, use the $FG,2$AutoComplete$FG$ window to look-up functions, etc.  $FG,2$<CTRL-SHIFT-F1>$FG$ (or whatever number) to follow a sym to it's source.  You can browse deeper and deeper.  You go back with $FG,2$<SHIFT-ESC>$FG$.
 

@@ -1,0 +1,4 @@
+//Anokos system layer, included by /StartOS.TC after /Adam/MakeAdam.
+Cd(__DIR__);;
+#include "Term"
+Cd("..");;

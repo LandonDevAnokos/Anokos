@@ -1,12 +1,13 @@
 """Anokos build driver.
 
-HolyC can only be compiled by the HolyC compiler, which runs inside the OS.
-So the kernel is bootstrapped in a VirtualBox VM:
+TerryC can only be compiled by its own compiler, which runs inside the OS.
+So the compiler and kernel are bootstrapped in a VirtualBox VM:
 
   stage 1  Boot stock TempleOS (from TempleOS/TempleOS.ISO) with the Anokos
-           kernel sources added. It compiles src/Kernel and sends the kernel
-           binary back over the VM's serial port.
-  stage 2  Build Anokos.ISO from src/ with that kernel as the boot kernel.
+           compiler and kernel sources added (under TempleOS's .HC/.HH names).
+           It compiles src/Compiler and src/Kernel and sends both binaries
+           back over the VM's serial port.
+  stage 2  Build Anokos.ISO from src/ with the new compiler and kernel.
 
 Usage (from the repository root):
   python tools/anokos_build.py kernel      # stage 1, needs VirtualBox
@@ -97,12 +98,41 @@ def copytree(src, dst):
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns(".gitkeep"), dirs_exist_ok=True)
 
 
+# Stock TempleOS (stage 1) only knows .HC/.HH source files.
+LEGACY_EXT = {".TC": ".HC", ".TH": ".HH"}
+LEGACY_INCLUDE = re.compile(rb'(#include\s+"[^"\n]*?)\.(TC|TH)"')
+TC_PATH = re.compile(r"(?<=[A-Za-z0-9_*~])\.(HC|HH)(?![A-Za-z0-9_])")
+
+
+def copy_as_legacy(src, dst):
+    """Copy TerryC sources under TempleOS names: .TC/.TH files become .HC/.HH and
+    #include lines that name a .TC/.TH file are pointed at the renamed file."""
+    for dp, dn, fn in os.walk(src):
+        for f in fn:
+            if f == ".gitkeep":
+                continue
+            base, ext = os.path.splitext(f)
+            rel = os.path.relpath(os.path.join(dp, base + LEGACY_EXT.get(ext, ext)), src)
+            out = os.path.join(dst, rel)
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            data = open(os.path.join(dp, f), "rb").read()
+            if ext in LEGACY_EXT or ext == ".PRJ":
+                data = LEGACY_INCLUDE.sub(lambda m: m.group(1) + (b".HC\"" if m.group(2) == b"TC" else b".HH\""), data)
+            open(out, "wb").write(data)
+
+
+def map_to_terryc(raw):
+    """Maps built in stage 1 point at the legacy .HC/.HH copies; point them at .TC/.TH."""
+    text = raw.decode("latin-1")
+    return TC_PATH.sub(lambda m: ".TC" if m.group(1) == "HC" else ".TH", text).encode("latin-1")
+
+
 def stage1(vm, timeout, update_src):
     tree = os.path.join(BUILD, "stage1_tree")
     shutil.rmtree(tree, ignore_errors=True)
     copytree(stock_tree(), tree)
-    copytree(os.path.join(SRC, "Kernel"), os.path.join(tree, "AnokosSrc", "Kernel"))
-    copytree(os.path.join(SRC, "Compiler"), os.path.join(tree, "AnokosSrc", "Compiler"))
+    copy_as_legacy(os.path.join(SRC, "Kernel"), os.path.join(tree, "AnokosSrc", "Kernel"))
+    copy_as_legacy(os.path.join(SRC, "Compiler"), os.path.join(tree, "AnokosSrc", "Compiler"))
     shutil.copy(os.path.join(HERE, "stage1", "AnokosBuild.HC"), tree)
     shutil.copy(os.path.join(HERE, "stage1", "HomeSys.HC"), tree)
     iso = os.path.join(BUILD, "stage1.iso")
@@ -113,7 +143,7 @@ def stage1(vm, timeout, update_src):
     if os.path.exists(serial_log):
         os.remove(serial_log)
     attach_iso(vm, iso)
-    print("stage 1: compiling the kernel inside TempleOS...")
+    print("stage 1: compiling the compiler and kernel inside TempleOS...")
     vbox("startvm", vm, "--type", "headless")
     t0 = time.time()
     data = ""
@@ -144,32 +174,40 @@ def stage1(vm, timeout, update_src):
         if len(raw) != int(size):
             raise SystemExit(f"{tag}: got {len(raw)} bytes, expected {size}")
         files[tag] = raw
-    if "KERNEL" not in files:
-        raise SystemExit("kernel binary missing from serial log")
-    kpath = os.path.join(outdir, "Kernel.BIN.C")
-    open(kpath, "wb").write(files["KERNEL"])
-    print(f"kernel: {kpath} ({len(files['KERNEL'])} bytes)")
-    if "MAP" in files:
-        open(os.path.join(outdir, "Kernel.MAP"), "wb").write(files["MAP"])
+    for tag in ("KERNEL", "COMPILER"):
+        if tag not in files:
+            raise SystemExit(f"{tag.lower()} binary missing from serial log")
+    outputs = {  # serial tag -> (build/kernel name, path in src/)
+        "KERNEL": ("Kernel.BIN.C", KERNEL_REL),
+        "MAP": ("Kernel.MAP", os.path.join("Kernel", "Kernel.MAP")),
+        "COMPILER": ("Compiler.BIN", os.path.join("Compiler", "Compiler.BIN")),
+        "CMAP": ("Compiler.MAP", os.path.join("Compiler", "Compiler.MAP")),
+    }
+    for tag, (name, src_rel) in outputs.items():
+        if tag not in files:
+            continue
+        raw = map_to_terryc(files[tag]) if name.endswith(".MAP") else files[tag]
+        out = os.path.join(outdir, name)
+        open(out, "wb").write(raw)
+        print(f"{name}: {out} ({len(raw)} bytes)")
+        if update_src:
+            open(os.path.join(SRC, src_rel), "wb").write(raw)
     if update_src:
-        shutil.copy(kpath, os.path.join(SRC, KERNEL_REL))
-        if "MAP" in files:
-            open(os.path.join(SRC, "Kernel", "Kernel.MAP"), "wb").write(files["MAP"])
-        print("updated src/0000Boot/0000Kernel.BIN.C and src/Kernel/Kernel.MAP")
+        print("updated the kernel and compiler binaries and maps in src/")
 
 
 def stage2(out_iso):
     tree = os.path.join(BUILD, "stage2_tree")
     shutil.rmtree(tree, ignore_errors=True)
     copytree(SRC, tree)
-    kernel = os.path.join(BUILD, "kernel", "Kernel.BIN.C")
-    if os.path.exists(kernel):
-        shutil.copy(kernel, os.path.join(tree, KERNEL_REL))
-        mp = os.path.join(BUILD, "kernel", "Kernel.MAP")
-        if os.path.exists(mp):
-            shutil.copy(mp, os.path.join(tree, "Kernel", "Kernel.MAP"))
-    else:
-        print("note: no build/kernel/Kernel.BIN.C, using src/" + KERNEL_REL)
+    built = os.path.join(BUILD, "kernel")
+    for name, rel in (("Kernel.BIN.C", KERNEL_REL), ("Kernel.MAP", os.path.join("Kernel", "Kernel.MAP")),
+                      ("Compiler.BIN", os.path.join("Compiler", "Compiler.BIN")),
+                      ("Compiler.MAP", os.path.join("Compiler", "Compiler.MAP"))):
+        if os.path.exists(os.path.join(built, name)):
+            shutil.copy(os.path.join(built, name), os.path.join(tree, rel))
+        else:
+            print(f"note: no build/kernel/{name}, using src/{rel}")
     build_iso.build(tree, out_iso, REF_ISO, KERNEL_REL.replace(os.sep, "/"))
 
 

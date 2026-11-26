@@ -8,9 +8,10 @@ TempleOS/** binary
 *.DATA binary
 *.GR binary
 
-# Language detection on GitHub
-*.HC linguist-language=HolyC
-*.HH linguist-language=HolyC
+# Language detection on GitHub. TerryC is not in GitHub's language list;
+# its syntax highlighter knows the language under its TempleOS name.
+*.TC linguist-language=HolyC
+*.TH linguist-language=HolyC
 *.DD linguist-documentation
 src/Misc/Bible.TXT linguist-vendored
 src/Adam/AutoComplete/*.DATA linguist-vendored

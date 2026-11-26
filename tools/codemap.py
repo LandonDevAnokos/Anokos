@@ -1,9 +1,9 @@
-"""Build the data for the Code City and graph view (docs/code-map/) from the TerryC/HolyC sources.
+"""Build the data for the Code City and graph view (docs/code-map/) from the TerryC sources.
 
 Usage (from the repository root):
   python tools/codemap.py              # writes docs/code-map/codemap.json
 
-It reads every .HC/.HH (and future .TC/.TH) file under src/ and records:
+It reads every .TC/.TH (and legacy .HC/.HH) file under src/ and records:
   nodes   functions, global variables, classes, #defines and asm labels,
           plus one node per source file
   edges   calls/uses between them, class types, inheritance and #includes
@@ -29,7 +29,7 @@ SRC = os.path.join(ROOT, "src")
 OUT = os.path.join(ROOT, "docs", "code-map", "codemap.json")
 OUT_SRC = os.path.join(ROOT, "docs", "code-map", "source.json")
 DOLDOC_TEXT = {"TX", "LK", "MA", "MU", "BT", "CB", "LS", "DA", "TR", "CK"}
-EXTS = (".HC", ".HH", ".TC", ".TH")
+EXTS = (".TC", ".TH", ".HC", ".HH")
 
 BUILTIN_TYPES = {
     "U0", "I0", "U8", "I8", "U16", "I16", "U32", "I32", "U64", "I64", "F64", "Bool",
@@ -611,7 +611,7 @@ def main():
         for line, target in fi.includes:
             tgt = target.replace("::/", "/").replace("~/", "")
             base = tgt.lstrip("/") if tgt.startswith("/") else os.path.normpath(os.path.join(here, tgt)).replace("\\", "/")
-            for ext in ("", ".HC", ".HH", ".TC", ".TH"):
+            for ext in ("", ".TC", ".TH", ".HC", ".HH"):
                 if base + ext in file_node:
                     edges.add((file_node_idx[fidx], file_node_idx[file_node[base + ext]], EDGE_INCLUDE))
                     break

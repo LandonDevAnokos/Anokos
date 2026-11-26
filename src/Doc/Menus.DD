@@ -25,4 +25,4 @@ The first arg is the msg code and it is optional with the default being $LK,"MSG
 
 Press $FG,2$<CTRL-SHIFT-l>$FG$ and "Insert ASCII/ScanCode".
 
-See $LK,"::/Demo/PullDownMenu.HC"$.
+See $LK,"::/Demo/PullDownMenu.TC"$.

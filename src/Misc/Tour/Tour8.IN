@@ -11,13 +11,13 @@ TourPut(
 "Press $$GREEN$$<ENTER>$$FG$$.\n");
 InGetStr("\n");
 
-"FF(\"/Kernel/St*;*.HH*\");";
+"FF(\"/Kernel/St*;*.TH*\");";
 TourPut(
-"Let's have two mask of $$GREEN$$St*$$FG$$ plus $$GREEN$$*.HH*$$FG$$\n\n"
+"Let's have two mask of $$GREEN$$St*$$FG$$ plus $$GREEN$$*.TH*$$FG$$\n\n"
 "Press $$GREEN$$<ENTER>$$FG$$.\n");
 InGetStr("\n");
 
-"FF(\"/Kernel/St*;*.HH*;!*Print*\");";
+"FF(\"/Kernel/St*;*.TH*;!*Print*\");";
 TourPut(
 "Let's unsel $$GREEN$$*Print*$$FG$$.\n\n"
 "Press $$GREEN$$<ENTER>$$FG$$.\n");

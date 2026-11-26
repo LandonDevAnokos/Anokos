@@ -9,7 +9,7 @@ Plans may change as the project grows. Discussion and proposals are welcome in G
 | # | Milestone | Status |
 | --- | --- | --- |
 | 0 | [Bootable terminal](#milestone-0-bootable-terminal) | Done |
-| 1 | [TerryC language rename](#milestone-1-terryc-language-rename) | Planned |
+| 1 | [TerryC language rename](#milestone-1-terryc-language-rename) | Done |
 | 2 | [PCI and PCI Express support](#milestone-2-pci-and-pci-express-support) | Planned |
 | 3 | [Ring 3 (user mode)](#milestone-3-ring-3-user-mode) | Planned |
 | 4 | [GPU and graphics support](#milestone-4-gpu-and-graphics-support) | Planned |
@@ -45,20 +45,24 @@ Plans may change as the project grows. Discussion and proposals are welcome in G
 
 ## Milestone 1: TerryC language rename
 
+**Status: Done**
+
 Rename the system programming language from HolyC to **TerryC**, in honor of Terry A. Davis, and
 give its files their own extensions.
 
 **Scope**
 
-- [ ] Rename source extensions: `.HC` to `.TC` and `.HH` to `.TH` (compressed files become
+- [x] Rename source extensions: `.HC` to `.TC` and `.HH` to `.TH` (compressed files become
       `.TC.Z` and `.TH.Z`)
-- [ ] Update the compiler, `#include` lookup, file loaders and default-extension handling to use
+- [x] Update the compiler, `#include` lookup, file loaders and default-extension handling to use
       the new names
-- [ ] Rename "HolyC" in the compiler, documentation, help index and error messages
-- [ ] Update host tools (`build_iso.py`, `anokos_build.py`) and `.gitattributes` for the new
+- [x] Rename "HolyC" in the compiler, documentation, help index and error messages
+- [x] Update host tools (`build_iso.py`, `anokos_build.py`) and `.gitattributes` for the new
       extensions
-- [ ] Decide whether `.HC`/`.HH` files are still accepted for compatibility with existing TempleOS
-      programs
+- [x] Decide whether `.HC`/`.HH` files are still accepted for compatibility with existing TempleOS
+      programs. **Decision:** yes. `.TC`/`.TH` are the default, `.HC`/`.HH` files are still recognized
+      as source, and an extensionless `#include` or `ExeFile()` falls back to `.HC` when no `.TC`
+      file exists.
 
 **Done when** the full system builds and boots with no `.HC`/`.HH` files and no user-facing
 "HolyC" references.

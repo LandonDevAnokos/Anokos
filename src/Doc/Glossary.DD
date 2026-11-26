@@ -162,15 +162,15 @@ $ID,2$There is no distinction between $FG,2$task$FG$, $FG,2$process$FG$ or $FG,2
 
 Since there is not friendly disk sharing and all tasks have the same address map, it might be accurate to call TempleOS, "multi-thread/single-process".  You run a single application process on $FG,2$Core0$FG$ and it can create threads on the same core or others.  If you run multiple processes, it should be safe, but one process will wait until another completely finishes a long disk access.  
 $ID,-2$$TR,"Adam Task"$
-$ID,2$This is Adam, as in Adam and Eve, the parent of all tasks.  Adam is immortal.  The adam task is created at start-up and appears in the small window at the top beneath the user terminal windows.  Since the Adam task is immortal, on Adam's heap go all memory objects which you don't want destroyed by any single task's death.  When created, Adam runs the file $LK,"::/StartOS.HC"$.  When start-up is finished, the adam task enters a server mode where it accepts requests from other tasks.  The $LK,"Adam",A="MN:Adam"$("") routine will make Adam compile and run text src code.  $FG,2$#include$FG$ stmts can be sent to $LK,"Adam",A="MN:Adam"$(""), creating system-wide code and data which are immortal.
+$ID,2$This is Adam, as in Adam and Eve, the parent of all tasks.  Adam is immortal.  The adam task is created at start-up and appears in the small window at the top beneath the user terminal windows.  Since the Adam task is immortal, on Adam's heap go all memory objects which you don't want destroyed by any single task's death.  When created, Adam runs the file $LK,"::/StartOS.TC"$.  When start-up is finished, the adam task enters a server mode where it accepts requests from other tasks.  The $LK,"Adam",A="MN:Adam"$("") routine will make Adam compile and run text src code.  $FG,2$#include$FG$ stmts can be sent to $LK,"Adam",A="MN:Adam"$(""), creating system-wide code and data which are immortal.
 $ID,-2$$TR,"Seth Tasks"$
 $ID,2$In the Bible, $LK,"Seth",A="BF:Genesis,4:25"$$FG$ is Adam and Eve's child.  Each CPU core has an executive task called $FG,2$Seth$FG$ that is immortal.  The Adam task on $FG,2$Core0$FG$ is also its $FG,2$Seth$FG$ task.
 $ID,-2$$TR,"Code and Data Heaps"$
 $ID,2$TempleOS uses the asm $FG,2$CALL$FG$ inst, exclusively, and that inst is limited to calling routines $FG,2$+/-2Gig$FG$ from the current code location.  To prevent out-of-range issues, I decided to separate code and data, placing all code within the lowest $FG,2$2Gig$FG$ of memory, addresses $FG,2$00000000$FG$-$FG,2$7FFFFFFF$FG$.  The compiler and $LK,"Load",A="MN:Load"$()er alloc memory from the code heap to store code and glbl vars, unless the compiler option $LK,"OPTf_GLBLS_ON_DATA_HEAP",A="MN:OPTf_GLBLS_ON_DATA_HEAP"$ is used.  When programs call $LK,"MAlloc",A="MN:MAlloc"$() is from the data heap, which in not limited in size, except by physical RAM memory.  You can alloc from any heap in any task at any time on any core, even making $LK,"independent",A="MN:MemPagAlloc"$ heaps.
 $ID,-2$$TR,"Parent, Child and PopUp Tasks"$
 $ID,2$Often a task will $LK,"Spawn",A="MN:Spawn"$() or $LK,"PopUp",A="MN:PopUp"$() a task as a helper.  The helper is known as a child Task, though you can $LK,"Spawn",A="MN:Spawn"$ a task and assign it a different parent... like $FG,2$Adam$FG$.  Links are kept as to who's whose child, so when one task is $LK,"Kill",A="MN:Kill"$()ed the child helper tasks die, too.  You can get a report of current system tasks with $LK,"TaskRep",A="MN:TaskRep"$().  There is just one window per task, so child tasks are needed for pop-ups.
-$ID,-2$$TR,"HolyC"$
-$ID,2$$LK,"HolyC",A="FI:::/Doc/HolyC.DD"$ is more than $FG,2$C$FG$ and less than $FG,2$C++$FG$.  It has the default args of $FG,2$C++$FG$ and uses $FG,2$class$FG$ in place of $FG,2$struct$FG$.  It uses $FG,2$U0,U8,U16,U32,I64$FG$ and $FG,2$I0,I8,I16,I32,I64$FG$ for signed and unsigned ints.  It has different $LK,"operator precedence",A="FF:::/Doc/HolyC.DD,operator precedence"$.  It has $FG,2$PASCAL$FG$-like function calls with no parens, but requires an $FG,2$&$FG,2$$FG$ when referring to function addresses.
+$ID,-2$$TR,"TerryC"$
+$ID,2$$LK,"TerryC",A="FI:::/Doc/TerryC.DD"$ is more than $FG,2$C$FG$ and less than $FG,2$C++$FG$.  It has the default args of $FG,2$C++$FG$ and uses $FG,2$class$FG$ in place of $FG,2$struct$FG$.  It uses $FG,2$U0,U8,U16,U32,I64$FG$ and $FG,2$I0,I8,I16,I32,I64$FG$ for signed and unsigned ints.  It has different $LK,"operator precedence",A="FF:::/Doc/TerryC.DD,operator precedence"$.  It has $FG,2$PASCAL$FG$-like function calls with no parens, but requires an $FG,2$&$FG,2$$FG$ when referring to function addresses.
 $ID,-2$$TR,"AOT Compile Mode"$
 $ID,2$$FG,2$Ahead-of-Time$FG$ compiling is conventional compilation mode.  Do not use $FG,2$AOT$FG$, use $FG,2$JIT$FG$ compiling.
 
@@ -222,12 +222,14 @@ $FG,5$*.???.C$FG$
   Contiguous files--NOT compressed.
 $FG,5$*.DD.Z;*.DD$FG$
   Text Files
-$FG,5$*.HC.Z;*.HC$FG$
-  HolyC src files.  The default HolyC compiler type is $FG,2$.HC.Z$FG$.
+$FG,5$*.TC.Z;*.TC$FG$
+  TerryC src files.  The default TerryC compiler type is $FG,2$.TC.Z$FG$.
+$FG,5$*.HC.Z;*.HC;*.HH.Z;*.HH$FG$
+  TempleOS src files, from before TerryC was renamed.  Still accepted, so TempleOS programs run unchanged.
 $FG,5$*.PRJ.Z;*.PRJ$FG$
-  HolyC src files to be compiled $FG,2$AOT$FG$.
-$FG,5$*.HH.Z;*.HH$FG$
-  HolyC src header files.
+  TerryC src files to be compiled $FG,2$AOT$FG$.
+$FG,5$*.TH.Z;*.TH$FG$
+  TerryC src header files.
 $FG,5$*.MAP.Z;*.MAP$FG$
   Compiler "map" files
 $FG,5$*.BIN.Z;*.BIN.C;*.BIN$FG$
@@ -237,7 +239,7 @@ $FG,5$*.DATA.Z;*.DATA$FG$
 $FG,5$*.ISO$FG$
   CD/DVD image file.
 $FG,5$*.IN.Z;*.IN$FG$
-  $FG,2$InFile$FG$ Basically a HolyC program whose stdout goes to the input of a task when $LK,"InFile",A="MN:InFile"$() is called.
+  $FG,2$InFile$FG$ Basically a TerryC program whose stdout goes to the input of a task when $LK,"InFile",A="MN:InFile"$() is called.
 $FG,5$*.GR.Z;*.GR$FG$
   Graphics file
 
@@ -253,10 +255,10 @@ $FG,5$ALL_CAPS$FG$
   Assembly Language labels are capitalized with underscores between words.  So are $FG,2$#define$FG$'s.
 
 $FG,5$_ALL_CAPS$FG$
-  Asm routines which are $LK,"HolyC",A="FI:::/Doc/HolyC.DD"$ callable must have a leading underscore.
+  Asm routines which are $LK,"TerryC",A="FI:::/Doc/TerryC.DD"$ callable must have a leading underscore.
 
 $FG,5$MixedCaps$FG$
-  $LK,"HolyC",A="FI:::/Doc/HolyC.DD"$ Functions and class names are MixedCaps.
+  $LK,"TerryC",A="FI:::/Doc/TerryC.DD"$ Functions and class names are MixedCaps.
 
 $FG,5$lower_case$FG$
   Local function vars and glbl vars are lower case.  Class member names are also lower_case.
