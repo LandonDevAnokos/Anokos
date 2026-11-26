@@ -14,7 +14,8 @@
 
 Anokos boots straight into a full-screen terminal at your display's native resolution. Everything,
 from the kernel and compiler to the apps and the command line, is written in **TerryC** (formerly
-HolyC) and compiled by the system itself. It runs on x86-64 today, with ARM64 and PowerPC planned.
+HolyC) and compiled by the system itself. It runs on x86-64 today. An ARM64 port (QEMU and
+Raspberry Pi) is underway, see [ARM64.md](ARM64.md), and PowerPC is planned.
 
 > [!NOTE]
 > **AI notice:** All work on Anokos so far, including the code, build tools, documentation and
@@ -24,11 +25,15 @@ HolyC) and compiled by the system itself. It runs on x86-64 today, with ARM64 an
 
 ## Quick start
 
-You need Python 3 and [VirtualBox](https://www.virtualbox.org/).
+You need Python 3 and [QEMU](https://www.qemu.org/) (or [VirtualBox](https://www.virtualbox.org/) on an
+x86-64 host).
 
 ```sh
 python tools/anokos_build.py all    # build the compiler, kernel and build/Anokos.ISO
 python tools/anokos_build.py run    # boot it in a virtual machine
+
+python tools/anokos_build.py arm64      # compile the ARM64 kernel inside Anokos
+python tools/anokos_build.py run-arm64  # boot it in qemu-system-aarch64
 ```
 
 See [BUILDING.md](BUILDING.md) for how the build works and how to boot on real hardware.

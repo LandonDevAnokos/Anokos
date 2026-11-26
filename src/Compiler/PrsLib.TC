@@ -246,8 +246,12 @@ U0 COCHeaderPut(CCmpCtrl *cc,I64 pass,Bool put)
   cc->pass=pass;
 }
 
-U8 *COCCompile(CCmpCtrl *cc,I64 *_code_size,CDbgInfo **_dbg,I64 *_type)
-{
+extern I64 A64Pass(CCmpCtrl *cc,COptReg *reg_offsets,U8 *buf,CDbgInfo **_dbg);
+
+U8 *COCCompile(CCmpCtrl *cc,I64 *_code_size,CDbgInfo **_dbg,I64 *_type,
+	Bool target=FALSE)
+{//target: code for the module being built (ARM64 if $LK,"OPTf_ARM64",A="MN:OPTf_ARM64"$),
+//not code the compiler runs itself.
   U8 *res;
   CCodeMisc *lb;
   I64 i,code_size,last_code_size;
@@ -277,6 +281,20 @@ U8 *COCCompile(CCmpCtrl *cc,I64 *_code_size,CDbgInfo **_dbg,I64 *_type)
       lb->dft=OptLabelFwd(lb->dft);
     }
     lb=lb->next;
+  }
+
+  if (target && cc->flags&CCF_AOT_COMPILE && Bt(&cc->opts,OPTf_ARM64)) {
+    COCHeaderPut(cc,7,FALSE);
+    A64Pass(cc,reg_offsets,NULL,NULL);	//Places labels
+    code_size=A64Pass(cc,reg_offsets,NULL,NULL);
+    res=MAlloc(code_size);
+    COCHeaderPut(cc,10,FALSE);
+    if (A64Pass(cc,reg_offsets,res,_dbg)!=code_size)
+      LexExcept(cc,"ARM64 code size changed between passes at ");
+    COCDel(cc,&cc->coc);
+    if (_code_size) *_code_size=code_size;
+    cc->saved_pass_trace=cc->pass_trace;
+    return res;
   }
 
   COCHeaderPut(cc,7,FALSE);

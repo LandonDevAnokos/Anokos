@@ -1,0 +1,40 @@
+//ARM64 (AArch64) build of the Anokos kernel. Work in progress.
+//
+//Built inside Anokos by the Anokos compiler with $LK,"OPTf_ARM64",A="MN:OPTf_ARM64"$ on, which
+//makes Cmp() write a boot image (Kernel8.IMG) instead of a BIN file:
+//  Cmp("/Kernel/KernelArm64","B:/KernelArm64","B:/Kernel8");
+//On the build machine: python tools/anokos_build.py arm64
+//
+//ARM64 replacements for x86-only kernel code live in /Kernel/Arm64.
+//Shared kernel files are added here as they are converted; see
+//ARM64.md in the repository for the plan and status.
+
+#exe {
+  Cd(__DIR__);;
+  Option(OPTf_ARM64,ON);
+  Option(OPTf_WARN_PAREN,ON);
+  Option(OPTf_WARN_DUP_TYPES,ON);
+};
+
+//Same order as $LK,"Kernel.PRJ",A="FI:::/Kernel/Kernel.PRJ"$, with ARM64 files for x86-only ones.
+#include "KernelA.TH"
+#include "Arm64/KStart"		//x86: KStart16, KStart32, KStart64
+#include "Arm64/KernelA64.TH"
+#include "Arm64/KMathA"		//x86: KMathA (x87)
+#include "Arm64/KUtils"		//x86: KUtils
+#exe {Option(OPTf_KEEP_PRIVATE,ON);};
+#include "/Compiler/CompilerA.TH"
+#exe {Option(OPTf_KEEP_PRIVATE,OFF);};
+#include "KernelB.TH"
+#include "Arm64/KMathB"		//TerryC for what x87 did in KMathA
+#include "Arm64/StrA"		//x86: asm in StrA
+//Until StrA.TC itself is in the ARM64 build, declare its asm routines here.
+_extern _STRCMP I64 StrCmp(U8 *st1,U8 *st2);
+_extern _STRICMP I64 StrICmp(U8 *st1,U8 *st2);
+_extern _STRNCMP I64 StrNCmp(U8 *st1,U8 *st2,I64 n);
+_extern _STRNICMP I64 StrNICmp(U8 *st1,U8 *st2,I64 n);
+_extern _STRCPY U0 StrCpy(U8 *dst,U8 *src);
+#include "Arm64/Board"
+#include "Arm64/Serial"
+#include "Arm64/KExcept"
+#include "Arm64/KMain"

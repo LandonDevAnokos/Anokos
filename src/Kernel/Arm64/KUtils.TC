@@ -1,0 +1,337 @@
+//ARM64 version of $LK,"KUtils",A="FI:::/Kernel/KUtils.TC"$: the kernel's asm utility routines, with
+//the same labels and results as the x86 originals.
+//
+//TerryC calling convention on ARM64: args on the stack (first at [SP] on
+//entry to a leaf routine), result in X0, and a routine with a fixed arg
+//count pops its args before RET (x86 RET1). Routines may clobber X0-X5,
+//X8, X9 and X16-X28; they must keep X6, X7, X10-X15, X29 and SP.
+//
+//x86-only routines keep their labels (the headers bind to them) but do
+//nothing useful on ARM64: _REP_IN_xx/_REP_OUT_xx (port I/O) trap with
+//BRK so a stray call shows up in the exception report, _CPUID returns
+//zeros and _SET_MSR does nothing. _CALLEXTSTR needs the symbol table
+//code (KHashA) and returns 0 until that is converted.
+
+asm {
+_MEMSET::	//U8 *MemSet(U8 *dst,I64 val,I64 cnt): returns dst+cnt
+	LDP	X0,X1,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	AND	X1,X1,0xFF
+	MOV	X3,0x0101010101010101
+	MUL	X1,X1,X3
+@@05:	CMP	X2,8
+	BLO	@@10
+	STR	X1,[X0],8
+	SUB	X2,X2,8
+	B	@@05
+@@10:	CBZ	X2,@@15
+	STRB	W1,[X0],1
+	SUB	X2,X2,1
+	B	@@10
+@@15:	RET
+
+_MEMSET_U16::
+	LDP	X0,X1,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+@@05:	CBZ	X2,@@10
+	STRH	W1,[X0],2
+	SUB	X2,X2,1
+	B	@@05
+@@10:	RET
+
+_MEMSET_U32::
+	LDP	X0,X1,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+@@05:	CBZ	X2,@@10
+	STR	W1,[X0],4
+	SUB	X2,X2,1
+	B	@@05
+@@10:	RET
+
+_MEMSET_I64::
+	LDP	X0,X1,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+@@05:	CBZ	X2,@@10
+	STR	X1,[X0],8
+	SUB	X2,X2,1
+	B	@@05
+@@10:	RET
+
+_MEMCPY::	//U8 *MemCpy(U8 *dst,U8 *src,I64 cnt): forward copy, returns dst+cnt
+	LDP	X0,X1,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	SUB	X3,X0,X1	//Overlapping with dst just above src: bytes,
+	CMP	X3,8		//so the result matches x86 REP MOVSB
+	BLO	@@10
+@@05:	CMP	X2,8
+	BLO	@@10
+	LDR	X3,[X1],8
+	STR	X3,[X0],8
+	SUB	X2,X2,8
+	B	@@05
+@@10:	CBZ	X2,@@15
+	LDRB	W3,[X1],1
+	STRB	W3,[X0],1
+	SUB	X2,X2,1
+	B	@@10
+@@15:	RET
+
+_MEMCMP::	//I64 MemCmp(U8 *ptr1,U8 *ptr2,I64 cnt): -1, 0 or 1 (unsigned bytes)
+	LDP	X3,X4,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	MOV	X0,0
+@@05:	CBZ	X2,@@10
+	LDRB	W5,[X3],1
+	LDRB	W1,[X4],1
+	SUB	X2,X2,1
+	CMP	X5,X1
+	BEQ	@@05
+	MOV	X0,1
+	BHI	@@10
+	MOV	X0,-1
+@@10:	RET
+
+_BEQU::		//Bool BEqu(U8 *bit_field,I64 bit,Bool val): returns the old bit
+	LDP	X3,X4,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	ADD	X3,X3,X4,ASR 3	//Bit strings: byte bit>>3, bit bit&7
+	AND	X4,X4,7
+	MOV	X5,1
+	LSL	X5,X5,X4
+	LDRB	W1,[X3]
+	TST	X1,X5
+	CSET	X0,NE
+	CBZ	X2,@@05
+	ORR	X1,X1,X5
+	B	@@10
+@@05:	BIC	X1,X1,X5
+@@10:	STRB	W1,[X3]
+	RET
+
+_LBEQU::	//Locked BEqu
+	LDP	X3,X4,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	ADD	X3,X3,X4,ASR 3
+	AND	X4,X4,7
+	MOV	X5,1
+	LSL	X5,X5,X4
+@@01:	LDAXRB	W1,[X3]
+	TST	X1,X5
+	CSET	X0,NE
+	CBZ	X2,@@05
+	ORR	X1,X1,X5
+	B	@@10
+@@05:	BIC	X1,X1,X5
+@@10:	STLXRB	W16,W1,[X3]
+	CBNZ	W16,@@01
+	RET
+
+_CLAMP_I64::	//I64 ClampI64(I64 num,I64 lo,I64 hi)
+	LDP	X0,X1,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	CMP	X0,X1
+	CSEL	X0,X1,X0,LT
+	CMP	X0,X2
+	CSEL	X0,X2,X0,GT
+	RET
+
+_CLAMP_U64::
+	LDP	X0,X1,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	CMP	X0,X1
+	CSEL	X0,X1,X0,LO
+	CMP	X0,X2
+	CSEL	X0,X2,X0,HI
+	RET
+
+_CALL::		//I64 Call(U8 *machine_code)
+//Works for both kinds of code: TerryC functions return with RET (X30),
+//compiled statements with $LK,"IC_RET",A="MN:IC_RET"$ (pop the return address).
+	LDR	X0,[SP]
+	ADD	SP,SP,8
+	CBZ	X0,@@10
+	STP	X29,X30,[SP,-16]!
+	MOV	X29,SP
+	ADR	X30,@@05
+	STR	X30,[SP,-8]!
+	BR	X0
+@@05:	MOV	SP,X29
+	LDP	X29,X30,[SP],16
+@@10:	RET
+
+_BIT_FIELD_OR_U32::	//U0 BFieldOrU32(U8 *bit_field,I64 bit,U32 pattern)
+	LDP	X3,X4,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	ADD	X3,X3,X4,LSR 3
+	AND	X4,X4,7
+	LSL	X2,X2,X4
+	LDR	X1,[X3]
+	ORR	X1,X1,X2
+	STR	X1,[X3]
+	RET
+
+_BIT_FIELD_EXT_U32::	//U32 BFieldExtU32(U8 *bit_field,I64 bit,I64 size)
+	LDP	X3,X4,[SP]
+	LDR	X2,[SP,16]
+	ADD	SP,SP,24
+	ADD	X3,X3,X4,LSR 3
+	AND	X4,X4,7
+	LDR	X1,[X3]
+	LSR	X1,X1,X4
+	MOV	X0,1
+	LSL	X0,X0,X2
+	SUB	X0,X0,1
+	AND	X0,X0,X1
+	RET
+
+_XCHG_I64::	//I64 XchgI64(I64 *dst,I64 d): returns the old value
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+	LDR	X0,[X3]
+	STR	X1,[X3]
+	RET
+_XCHG_U32::
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+	LDR	W0,[X3]
+	STR	W1,[X3]
+	RET
+_XCHG_U16::
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+	LDRH	W0,[X3]
+	STRH	W1,[X3]
+	RET
+_XCHG_U8::
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+	LDRB	W0,[X3]
+	STRB	W1,[X3]
+	RET
+
+_LXCHG_I64::	//Locked (atomic) exchanges
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+@@05:	LDAXR	X0,[X3]
+	STLXR	W16,X1,[X3]
+	CBNZ	W16,@@05
+	RET
+_LXCHG_U32::
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+@@05:	LDAXR	W0,[X3]
+	STLXR	W16,W1,[X3]
+	CBNZ	W16,@@05
+	RET
+_LXCHG_U16::
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+@@05:	LDAXRH	W0,[X3]
+	STLXRH	W16,W1,[X3]
+	CBNZ	W16,@@05
+	RET
+_LXCHG_U8::
+	LDP	X3,X1,[SP]
+	ADD	SP,SP,16
+@@05:	LDAXRB	W0,[X3]
+	STLXRB	W16,W1,[X3]
+	CBNZ	W16,@@05
+	RET
+
+_CALL_IND::	//I64 CallInd(I64 (*fp_addr)(...),...): copy the args, call
+	STP	X29,X30,[SP,-16]!
+	MOV	X29,SP
+	LDR	X3,[X29,16]	//fp_addr
+	LDR	X2,[X29,24]	//argc
+	ADD	X1,X29,32	//argv
+	LSL	X4,X2,3
+	SUB	SP,SP,X4
+	MOV	X5,SP
+@@05:	CBZ	X4,@@10
+	LDR	X0,[X1],8
+	STR	X0,[X5],8
+	SUB	X4,X4,8
+	B	@@05
+@@10:	MOV	X0,0
+	CBZ	X3,@@15
+	BLR	X3
+@@15:	MOV	SP,X29
+	LDP	X29,X30,[SP],16
+	RET
+
+_CALLEXTNUM::	//I64 CallExtNum(I64 num,...): call ext[num] with the args
+	STP	X29,X30,[SP,-16]!
+	MOV	X29,SP
+	LDR	X3,[X29,16]	//num
+	LDR	X2,[X29,24]	//argc
+	ADD	X1,X29,32	//argv
+	LSL	X4,X2,3
+	SUB	SP,SP,X4
+	MOV	X5,SP
+@@05:	CBZ	X4,@@10
+	LDR	X0,[X1],8
+	STR	X0,[X5],8
+	SUB	X4,X4,8
+	B	@@05
+@@10:	ADR	X4,SYS_EXTERN_TABLE
+	LDR	X4,[X4]
+	MOV	X0,0
+	CBZ	X4,@@15
+	LDR	X3,[X4,X3,LSL 3]
+	CBZ	X3,@@15
+	BLR	X3
+@@15:	MOV	SP,X29
+	LDP	X29,X30,[SP],16
+	RET
+
+_CALLEXTSTR::	//I64 CallExtStr(U8 *name,...): TODO with KHashA
+	MOV	X0,0
+	RET
+
+ARM64_NO_PORT_IO::
+	BRK	0x10
+	RET
+_REP_IN_U8::	B	ARM64_NO_PORT_IO
+_REP_IN_U16::	B	ARM64_NO_PORT_IO
+_REP_IN_U32::	B	ARM64_NO_PORT_IO
+_REP_OUT_U8::	B	ARM64_NO_PORT_IO
+_REP_OUT_U16::	B	ARM64_NO_PORT_IO
+_REP_OUT_U32::	B	ARM64_NO_PORT_IO
+
+_CPUID::	//U0 CPUId(U32 rax,CRAXRBCRCXRDX *res): no CPUID on ARM64, zeros
+	LDP	X0,X1,[SP]
+	ADD	SP,SP,16
+	STP	XZR,XZR,[X1]
+	STP	XZR,XZR,[X1,16]
+	RET
+
+_SET_MSR::	//No MSRs on ARM64
+	ADD	SP,SP,16
+	RET
+
+//x86 sets the FS/GS segment bases. On ARM64 Fs (current task) is in
+//TPIDR_EL1 and Gs (current CPU) in TPIDRRO_EL0. IN: X0=address
+SET_FS_BASE::
+	MSR	TPIDR_EL1,X0
+	RET
+SET_GS_BASE::
+	MSR	TPIDRRO_EL0,X0
+	RET
+_RET::
+	RET
+_SYS_HLT::
+	MSR	DAIFSET,15
+@@05:	WFI
+	B	@@05
+}

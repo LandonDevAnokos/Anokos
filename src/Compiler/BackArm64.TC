@@ -1,0 +1,1422 @@
+#exe {Option(OPTf_WARN_PAREN,OFF);};
+/*ARM64 (AArch64) code generator.
+
+Turns the optimized intermediate code into AArch64 machine code. It
+runs instead of $LK,"OptPass789A",A="MN:OptPass789A"$ when an AOT compile has
+$LK,"OPTf_ARM64",A="MN:OPTf_ARM64"$ set, so passes 0-6 (parsing, type
+propagation, register allocation) are shared with x86-64.
+
+The optimizer allocates x86 register numbers. They map 1:1 onto ARM64:
+RAX..R15 are X0..X15, except RSP is SP and RBP is X29 (frame pointer).
+X16-X17 (address scratch) and X19-X22 (value scratch) belong to the
+code generator; anything may clobber them.
+
+ARM64 TerryC calling convention (same stack layout as x86-64):
+  Args are pushed right to left, 8 bytes each. The callee does
+	STP X29,X30,[SP,-16]!  /  MOV X29,SP
+  so [X29] is the old frame pointer, [X29+8] the return address and
+  the first arg is at [X29+16]. Results are returned in X0 (F64 too,
+  as raw bits). Callees preserve X6,X7,X10-X15, X29 and SP.
+  Stack slots are 8 bytes, so SP is only 8-byte aligned: the boot code
+  turns off SP alignment checking (SCTLR_ELx.SA/SA0).
+
+$LK,"IC_RET",A="MN:IC_RET"$ (used by switch sub-blocks and module-level code)
+returns to an address popped from the stack, like x86 RET.
+*/
+
+class CA64Gen
+{
+  CCmpCtrl *cc;
+  CIntermediateCode *tmpi;
+  U8	*buf;	//NULL while sizing
+  I64	rip,	//Offset of the next instruction in this function
+	rip_base; //Offset of this function in the module
+};
+
+CA64Gen a64;
+
+#define REG_A64		0x40 //OR'ed into a reg num: already an AArch64 reg
+
+U0 A64Err(U8 *msg)
+{
+  PrintErr("ARM64: %s\n",msg);
+  if (a64.tmpi)
+    ICPut(a64.cc,a64.tmpi);
+  LexExcept(a64.cc,"ARM64 code generation error at ");
+}
+
+I64 A64R(I64 r)
+{
+  if (r&REG_A64)
+    return r&31;
+  return A64Reg(r);
+}
+
+I64 A64PC()
+{//Module offset of the next instruction.
+  return a64.rip_base+a64.rip;
+}
+
+U0 A64I(U32 ins)
+{
+  U32 *dst;
+  if (a64.buf) {
+    dst=a64.buf+a64.rip;
+    *dst=ins;
+  }
+  a64.rip+=4;
+}
+
+U0 A64Imm(I64 d,I64 v)
+{
+  U32 tmp[4];
+  I64 i,cnt=A64MovImm(tmp,d,v);
+  for (i=0;i<cnt;i++)
+    A64I(tmp[i]);
+}
+
+U0 A64Mov(I64 d,I64 n)
+{
+  if (d!=n)
+    A64I(A64MovReg(d,n));
+}
+
+U0 A64AddConst(I64 d,I64 n,I64 v)
+{//d=n+v. d,n may be SP. Uses IP1 for big constants.
+  I64 a=v;
+  Bool sub=FALSE;
+  if (!v) {
+    A64Mov(d,n);
+    return;
+  }
+  if (a<0) {
+    a=-a;
+    sub=TRUE;
+  }
+  if (a<0x1000)
+    A64I(A64AddImm(d,n,a,sub));
+  else if (a<0x1000000) {
+    A64I(A64AddImm(d,n,a>>12,sub,TRUE));
+    if (a&0xFFF)
+      A64I(A64AddImm(d,d,a&0xFFF,sub));
+  } else {
+    A64Imm(A64_IP1,v);
+    A64I(A64AddExt(d,n,A64_IP1));
+  }
+}
+
+U0 A64Push(I64 r)
+{
+  A64I(A64LSPre(A64LS_STRX,r,A64_SP,-8));
+}
+
+U0 A64Pop(I64 r)
+{
+  A64I(A64LSPost(A64LS_LDRX,r,A64_SP,8));
+}
+
+U0 A64Ld(I64 op,I64 t,I64 base,I64 off)
+{
+  I64 ins=A64LSImm(op,t,base,off);
+  if (ins==-1) {
+    A64Imm(A64_IP1,off);
+    A64I(A64LSReg(op,t,base,A64_IP1));
+  } else
+    A64I(ins);
+}
+
+U0 A64AdrAbs(I64 d,I64 target)
+{//d=address of module offset target (PC relative, any distance < 4 GiB).
+  I64 pc=A64PC();
+  A64I(A64Adrp(d,(target>>12)-(pc>>12)));
+  A64I(A64AddImm(d,d,target&0xFFF));
+}
+
+I64 A64Addr(CICType t,I64 r,I64 d,I64 *_off)
+{//Returns the base reg of a memory operand, with the offset in *_off.
+  I64 base,idx,scale;
+  switch (Bsr(t&MDG_MASK)) {
+    case MDf_DISP:
+      *_off=d;
+      return A64R(r);
+    case MDf_SIB:
+      base=r.u8[0];
+      idx=A64Reg(r.u8[1]&15);
+      scale=r.u8[1]>>6;
+      if (base==REG_NONE)
+	A64I(A64LslImm(A64_IP0,idx,scale));
+      else {
+	base=A64Reg(base);
+	if (base==A64_SP)
+	  A64I(A64AddExt(A64_IP0,A64_SP,idx)|(scale<<10));
+	else
+	  A64I(A64Alu(A64OP_ADD,A64_IP0,base,idx,scale));
+      }
+      *_off=d;
+      return A64_IP0;
+    case MDf_RIP_DISP32:
+      A64AdrAbs(A64_IP0,d);
+      *_off=0;
+      return A64_IP0;
+  }
+  A64Err("Expected a memory operand");
+  return 0;
+}
+
+I64 A64Get(CICType t,I64 r,I64 d,I64 want)
+{//Load an operand. Returns the reg holding its 64-bit value.
+  I64 base,off;
+  switch (Bsr(t&MDG_MASK)) {
+    case MDf_REG:
+      r=A64R(r);
+      if (r==A64_SP) {
+	A64Mov(want,A64_SP);
+	return want;
+      }
+      return r;
+    case MDf_IMM:
+      A64Imm(want,d);
+      return want;
+    case MDf_STK:
+      A64Pop(want);
+      return want;
+    case MDf_DISP:
+    case MDf_SIB:
+    case MDf_RIP_DISP32:
+      base=A64Addr(t,r,d,&off);
+      A64Ld(A64LoadOp(t.raw_type),want,base,off);
+      return want;
+  }
+  A64Err("Missing operand");
+  return want;
+}
+
+U0 A64Put(CICType t,I64 r,I64 d,I64 src)
+{//Store a 64-bit value to an operand, narrowing to its type.
+  I64 base,off;
+  switch (Bsr(t&MDG_MASK)) {
+    case MDf_REG:
+      A64Mov(A64R(r),src);
+      break;
+    case MDf_STK:
+      A64Push(src);
+      break;
+    case MDf_DISP:
+    case MDf_SIB:
+    case MDf_RIP_DISP32:
+      base=A64Addr(t,r,d,&off);
+      A64Ld(A64StoreOp(t.raw_type),src,base,off);
+      break;
+    case MDf_IMM:
+      A64Err("Store to an immediate");
+  }
+}
+
+U0 A64Ext(I64 r,I64 raw_type)
+{//Sign/zero extend r in place, as reloading it from memory would.
+  switch (raw_type) {
+    case RT_I8:	 A64I(A64Bfm(A64OP_SBFM,r,r,0,7));  break;
+    case RT_U8:	 A64I(A64Bfm(A64OP_UBFM,r,r,0,7));  break;
+    case RT_I16: A64I(A64Bfm(A64OP_SBFM,r,r,0,15)); break;
+    case RT_U16: A64I(A64Bfm(A64OP_UBFM,r,r,0,15)); break;
+    case RT_I32: A64I(A64Bfm(A64OP_SBFM,r,r,0,31)); break;
+    case RT_U32: A64I(A64Bfm(A64OP_UBFM,r,r,0,31)); break;
+  }
+}
+
+I64 A64Arg(CICArg *a,I64 to_f64,I64 to_int,I64 want)
+{//Load an IC arg, applying the int<->F64 conversion flags.
+  I64 r=A64Get(a->type,a->reg,a->disp,want);
+  if (a64.tmpi->ic_flags&to_f64) {
+    A64I(A64Scvtf(0,r));
+    A64I(A64FmovXD(want,0));
+    r=want;
+  } else if (a64.tmpi->ic_flags&to_int) {
+    A64I(A64FmovDX(0,r));
+    A64I(A64Fcvtzs(want,0));
+    r=want;
+  }
+  return r;
+}
+
+I64 A64Arg1(I64 want=A64_T0)
+{
+  return A64Arg(&a64.tmpi->arg1,ICF_ARG1_TO_F64,ICF_ARG1_TO_INT,want);
+}
+
+I64 A64Arg2(I64 want=A64_T1)
+{
+  return A64Arg(&a64.tmpi->arg2,ICF_ARG2_TO_F64,ICF_ARG2_TO_INT,want);
+}
+
+U0 A64Res(I64 src)
+{//Store an IC result, applying the result conversion flags.
+  CIntermediateCode *tmpi=a64.tmpi;
+  if (!tmpi->res.type.mode) {
+//Like x86, which leaves results in RAX: every IC may clobber RAX/X0,
+//and some consumers read it from there.
+    A64Mov(0,src);
+    return;
+  }
+  if (tmpi->ic_flags&ICF_RES_TO_F64) {
+    A64I(A64Scvtf(0,src));
+    A64I(A64FmovXD(A64_T3,0));
+    src=A64_T3;
+  } else if (tmpi->ic_flags&ICF_RES_TO_INT) {
+    A64I(A64FmovDX(0,src));
+    A64I(A64Fcvtzs(A64_T3,0));
+    src=A64_T3;
+  }
+  if (tmpi->ic_flags&ICF_PUSH_CMP && tmpi->res.type&MDF_STK) {
+//The value pushed for the next compare stays on top.
+    A64Pop(A64_IP1);
+    A64Push(src);
+    A64Push(A64_IP1);
+  } else
+    A64Put(tmpi->res.type,tmpi->res.reg,tmpi->res.disp,src);
+}
+
+U0 A64ResRax(I64 src)
+{//ICs whose x86 version leaves the result in RAX and doesn't store res.
+  A64Mov(0,src);
+}
+
+U0 A64PushRegs(I64 mask)
+{
+  I64 i;
+  for (i=0;i<REG_REGS_NUM;i++)
+    if (Bt(&mask,i))
+      A64Push(A64Reg(i));
+}
+
+U0 A64PopRegs(I64 mask)
+{
+  I64 i;
+  for (i=REG_REGS_NUM-1;i>=0;i--)
+    if (Bt(&mask,i))
+      A64Pop(A64Reg(i));
+}
+
+I64 A64LabelOff(CCodeMisc *lb,I64 pop_cmp_adj=8)
+{//Branch offset from the next instruction to a label.
+  I64 addr;
+  lb=OptLabelFwd(lb);
+  addr=lb->addr;
+  if (addr==INVALID_PTR)
+    return 0;
+  if (lb->flags&CMF_POP_CMP)
+    addr+=pop_cmp_adj;
+  return addr-a64.rip;
+}
+
+Bool A64Unsigned()
+{
+  CIntermediateCode *tmpi=a64.tmpi;
+  return ToBool(tmpi->ic_class->raw_type&RTF_UNSIGNED ||
+	tmpi->ic_flags&ICF_USE_UNSIGNED);
+}
+
+U0 A64FBin(U32 op,I64 d,I64 n,I64 m)
+{//d=n op m on F64 bit patterns in X regs.
+  A64I(A64FmovDX(0,n));
+  A64I(A64FmovDX(1,m));
+  A64I(A64Fop2(op,0,0,1));
+  A64I(A64FmovXD(d,0));
+}
+
+U0 A64FMod(I64 d,I64 n,I64 m)
+{//d=n-Trunc(n/m)*m
+  A64I(A64FmovDX(0,n));
+  A64I(A64FmovDX(1,m));
+  A64I(A64Fop2(A64OP_FDIV,2,0,1));
+  A64I(A64Fop1(0x1E65C000,2,2));	//FRINTZ D2,D2
+  A64I(0x1F408000|(1<<16)|(0<<10)|(2<<5)|0); //FMSUB D0,D2,D1,D0
+  A64I(A64FmovXD(d,0));
+}
+
+U0 A64IntOp(I64 code,I64 d,I64 n,I64 m,Bool is_unsigned)
+{//d=n op m for the integer binary ops.
+  switch (code) {
+    case IC_ADD: case IC_ADD_EQU:
+      A64I(A64Alu(A64OP_ADD,d,n,m)); break;
+    case IC_SUB: case IC_SUB_EQU:
+      A64I(A64Alu(A64OP_SUB,d,n,m)); break;
+    case IC_AND: case IC_AND_EQU:
+      A64I(A64Alu(A64OP_AND,d,n,m)); break;
+    case IC_OR: case IC_OR_EQU:
+      A64I(A64Alu(A64OP_ORR,d,n,m)); break;
+    case IC_XOR: case IC_XOR_EQU:
+      A64I(A64Alu(A64OP_EOR,d,n,m)); break;
+    case IC_MUL: case IC_MUL_EQU:
+      A64I(A64Madd(d,n,m,A64_ZR)); break;
+    case IC_DIV: case IC_DIV_EQU:
+      if (is_unsigned)
+	A64I(A64DP2(A64OP_UDIV,d,n,m));
+      else
+	A64I(A64DP2(A64OP_SDIV,d,n,m));
+      break;
+    case IC_MOD: case IC_MOD_EQU:
+      if (is_unsigned)
+	A64I(A64DP2(A64OP_UDIV,A64_IP0,n,m));
+      else
+	A64I(A64DP2(A64OP_SDIV,A64_IP0,n,m));
+      A64I(A64Madd(d,A64_IP0,m,n,TRUE));
+      break;
+    case IC_SHL: case IC_SHL_EQU:
+      A64I(A64DP2(A64OP_LSLV,d,n,m)); break;
+    case IC_SHR: case IC_SHR_EQU:
+      if (is_unsigned)
+	A64I(A64DP2(A64OP_LSRV,d,n,m));
+      else
+	A64I(A64DP2(A64OP_ASRV,d,n,m));
+      break;
+    default:
+      A64Err("Unsupported integer op");
+  }
+}
+
+U0 A64FloatOp(I64 code,I64 d,I64 n,I64 m)
+{
+  switch (code) {
+    case IC_ADD: case IC_ADD_EQU: A64FBin(A64OP_FADD,d,n,m); break;
+    case IC_SUB: case IC_SUB_EQU: A64FBin(A64OP_FSUB,d,n,m); break;
+    case IC_MUL: case IC_MUL_EQU: A64FBin(A64OP_FMUL,d,n,m); break;
+    case IC_DIV: case IC_DIV_EQU: A64FBin(A64OP_FDIV,d,n,m); break;
+    case IC_MOD: case IC_MOD_EQU: A64FMod(d,n,m); break;
+    default:
+      A64Err("Unsupported F64 op");
+  }
+}
+
+U0 A64LValue(CICType *_t,I64 *_r,I64 *_d)
+{//The location an assignment-type IC changes (arg1 or what it points to).
+  CIntermediateCode *tmpi=a64.tmpi;
+  I64 p;
+  if (tmpi->ic_flags&ICF_BY_VAL) {
+    if (tmpi->arg1.type&(MDF_STK|MDF_IMM))
+      A64Err("By-value lvalue on the stack");
+    *_t=tmpi->arg1.type&MDG_MASK+tmpi->arg1_type_pointed_to;
+    *_r=tmpi->arg1.reg;
+    *_d=tmpi->arg1.disp;
+  } else {
+    p=A64Get(tmpi->arg1.type,tmpi->arg1.reg,tmpi->arg1.disp,A64_T3);
+    A64Mov(A64_T3,p);
+    *_t=MDF_DISP+tmpi->arg1_type_pointed_to;
+    *_r=REG_A64|A64_T3;
+    *_d=0;
+  }
+}
+
+U0 A64OpEqu()
+{//x op= y
+  CIntermediateCode *tmpi=a64.tmpi;
+  CICType lt;
+  I64 lr,ld,v2,old,pt=tmpi->arg1_type_pointed_to;
+  v2=A64Arg2();
+  A64LValue(&lt,&lr,&ld);
+  old=A64Get(lt,lr,ld,A64_T0);
+  if (tmpi->ic_flags&ICF_USE_INT || tmpi->ic_code>=IC_SHL_EQU &&
+	tmpi->ic_code<=IC_SHR_EQU || tmpi->ic_code>=IC_AND_EQU &&
+	tmpi->ic_code<=IC_XOR_EQU)
+    A64IntOp(tmpi->ic_code,A64_T2,old,v2,A64Unsigned);
+  else {
+    if (pt!=RT_F64) {
+      A64I(A64Scvtf(0,old));
+      A64I(A64FmovXD(A64_T0,0));
+      old=A64_T0;
+    }
+    A64FloatOp(tmpi->ic_code,A64_T2,old,v2);
+    if (pt!=RT_F64) {
+      A64I(A64FmovDX(0,A64_T2));
+      A64I(A64Fcvtzs(A64_T2,0));
+    }
+  }
+  A64Put(lt,lr,ld,A64_T2);
+  if (!(lt&MDF_REG))
+    A64Ext(A64_T2,pt);
+  A64Res(A64_T2);
+}
+
+I64 A64Step(CHashClass *tmpc)
+{//Amount ++/-- changes a value of this class by.
+  if (tmpc && tmpc->ptr_stars_cnt && (tmpc-1)->size!=1)
+    return (tmpc-1)->size;
+  return 1;
+}
+
+U0 A64IncDec(Bool dec,Bool post)
+{//++x, --x, x++, x--
+  CIntermediateCode *tmpi=a64.tmpi;
+  CICType lt;
+  I64 lr,ld,old,step=A64Step(tmpi->ic_class),pt=tmpi->arg1_type_pointed_to;
+  A64LValue(&lt,&lr,&ld);
+  old=A64Get(lt,lr,ld,A64_T0);
+  if (tmpi->ic_flags&ICF_USE_INT) {
+    if (dec)
+      A64AddConst(A64_T2,old,-step);
+    else
+      A64AddConst(A64_T2,old,step);
+  } else {//F64 +/- 1.0
+    A64Imm(A64_T1,0x3FF0000000000000);
+    if (dec)
+      A64FBin(A64OP_FSUB,A64_T2,old,A64_T1);
+    else
+      A64FBin(A64OP_FADD,A64_T2,old,A64_T1);
+  }
+  if (post) {
+    A64Mov(A64_T0,old);
+    A64Res(A64_T0);
+    A64Put(lt,lr,ld,A64_T2);
+  } else {
+    A64Put(lt,lr,ld,A64_T2);
+    if (!(lt&MDF_REG))
+      A64Ext(A64_T2,pt);
+    A64Res(A64_T2);
+  }
+}
+
+U0 A64DerefIncDec(Bool dec)
+{//*p++ and *p--
+  CIntermediateCode *tmpi=a64.tmpi;
+  CICType lt;
+  I64 lr,ld,p,t=tmpi->res.type.raw_type,step=1;
+  if (tmpi->ic_class)
+    step=tmpi->ic_class->size;
+  if (t>tmpi->arg1_type_pointed_to)
+    t=tmpi->arg1_type_pointed_to;
+  if (tmpi->ic_flags&ICF_BY_VAL) {
+    lt=tmpi->arg1.type&MDG_MASK+RT_I64;
+    lr=tmpi->arg1.reg;
+    ld=tmpi->arg1.disp;
+  } else {
+    p=A64Get(tmpi->arg1.type,tmpi->arg1.reg,tmpi->arg1.disp,A64_T3);
+    A64Mov(A64_T3,p);
+    lt=MDF_DISP+RT_I64;
+    lr=REG_A64|A64_T3;
+    ld=0;
+  }
+  p=A64Get(lt,lr,ld,A64_T0);
+  A64Mov(A64_T0,p);
+  A64Ld(A64LoadOp(t),A64_T2,A64_T0,0);
+  if (dec)
+    A64AddConst(A64_T1,A64_T0,-step);
+  else
+    A64AddConst(A64_T1,A64_T0,step);
+  A64Put(lt,lr,ld,A64_T1);
+  A64Res(A64_T2);
+}
+
+U0 A64Assign()
+{
+  CIntermediateCode *tmpi=a64.tmpi;
+  CICType lt;
+  I64 lr,ld,v2;
+  v2=A64Arg2();
+  A64LValue(&lt,&lr,&ld);
+  A64Put(lt,lr,ld,v2);
+  if (tmpi->res.type.mode) {
+    A64Mov(A64_T2,v2);
+    if (tmpi->ic_flags&ICF_BY_VAL && !(lt&MDF_REG))
+      A64Ext(A64_T2,tmpi->arg1_type_pointed_to);
+    A64Res(A64_T2);
+  }
+}
+
+U0 A64AssignIncDec(Bool dec)
+{//*p++=v and *p--=v
+  CIntermediateCode *tmpi=a64.tmpi;
+  CICType lt;
+  I64 lr,ld,v2,p,step=1;
+  if (tmpi->ic_class2)
+    step=(tmpi->ic_class2-1)->size;
+  v2=A64Arg2();
+  A64Mov(A64_T1,v2);
+  if (tmpi->ic_flags&ICF_BY_VAL) {
+    lt=tmpi->arg1.type&MDG_MASK+RT_I64;
+    lr=tmpi->arg1.reg;
+    ld=tmpi->arg1.disp;
+  } else {
+    p=A64Get(tmpi->arg1.type,tmpi->arg1.reg,tmpi->arg1.disp,A64_T3);
+    A64Mov(A64_T3,p);
+    lt=MDF_DISP+RT_I64;
+    lr=REG_A64|A64_T3;
+    ld=0;
+  }
+  p=A64Get(lt,lr,ld,A64_T0);
+  A64Mov(A64_T0,p);
+  A64Ld(A64StoreOp(tmpi->arg1_type_pointed_to),A64_T1,A64_T0,0);
+  if (dec)
+    A64AddConst(A64_T0,A64_T0,-step);
+  else
+    A64AddConst(A64_T0,A64_T0,step);
+  A64Put(lt,lr,ld,A64_T0);
+  A64Res(A64_T1);
+}
+
+I64 A64IntCond(I64 code,Bool is_unsigned)
+{
+  switch (code) {
+    case IC_EQU_EQU: case IC_BR_EQU_EQU: case IC_BR_EQU_EQU2:
+      return A64C_EQ;
+    case IC_NOT_EQU: case IC_BR_NOT_EQU: case IC_BR_NOT_EQU2:
+      return A64C_NE;
+    case IC_LESS: case IC_BR_LESS: case IC_BR_LESS2:
+      if (is_unsigned) return A64C_LO;
+      return A64C_LT;
+    case IC_GREATER_EQU: case IC_BR_GREATER_EQU: case IC_BR_GREATER_EQU2:
+      if (is_unsigned) return A64C_HS;
+      return A64C_GE;
+    case IC_GREATER: case IC_BR_GREATER: case IC_BR_GREATER2:
+      if (is_unsigned) return A64C_HI;
+      return A64C_GT;
+    case IC_LESS_EQU: case IC_BR_LESS_EQU: case IC_BR_LESS_EQU2:
+      if (is_unsigned) return A64C_LS;
+      return A64C_LE;
+  }
+  A64Err("Bad compare");
+  return A64C_AL;
+}
+
+I64 A64FloatCond(I64 code)
+{//Conditions after FCMP that are false for NaNs.
+  switch (code) {
+    case IC_LESS: case IC_BR_LESS:		return A64C_MI;
+    case IC_GREATER_EQU: case IC_BR_GREATER_EQU:return A64C_GE;
+    case IC_GREATER: case IC_BR_GREATER:	return A64C_GT;
+    case IC_LESS_EQU: case IC_BR_LESS_EQU:	return A64C_LS;
+  }
+  A64Err("Bad F64 compare");
+  return A64C_AL;
+}
+
+U0 A64Compare(Bool is_float)
+{//a<b etc. as a 0/1 value
+  CIntermediateCode *tmpi=a64.tmpi;
+  I64 v1,v2,cond;
+  v2=A64Arg2();
+  if (tmpi->ic_flags&ICF_POP_CMP) {
+    A64Pop(A64_T0);
+    v1=A64_T0;
+  } else
+    v1=A64Arg1();
+  if (tmpi->ic_flags&ICF_PUSH_CMP)
+    A64Push(v2);
+  if (is_float) {
+    A64I(A64FmovDX(0,v1));
+    A64I(A64FmovDX(1,v2));
+    A64I(A64Fcmp(0,1));
+    cond=A64FloatCond(tmpi->ic_code);
+  } else {
+    A64I(A64Cmp(v1,v2));
+    cond=A64IntCond(tmpi->ic_code,A64Unsigned);
+  }
+  A64I(A64Cset(A64_T2,cond));
+  A64Res(A64_T2);
+}
+
+U0 A64CmpBranch(Bool has_res,Bool is_float)
+{//if (a<b) goto label, etc.
+  CIntermediateCode *tmpi=a64.tmpi;
+  I64 v1,v2,cond,adj=8;
+  v2=A64Arg2();
+  v1=A64Arg1();
+  if (is_float) {
+    A64I(A64FmovDX(0,v1));
+    A64I(A64FmovDX(1,v2));
+    A64I(A64Fcmp(0,1));
+    cond=A64FloatCond(tmpi->ic_code);
+  } else {
+    A64I(A64Cmp(v1,v2));
+    cond=A64IntCond(tmpi->ic_code,A64Unsigned);
+  }
+  if (tmpi->ic_flags&ICF_PUSH_CMP)
+    adj=4;
+  A64I(A64Bcond(cond,A64LabelOff(tmpi->ic_data,adj)));
+  if (has_res) {//Chained compares keep the right side for the next one.
+    A64Mov(A64_T2,v2);
+    A64Res(A64_T2);
+  }
+}
+
+U0 A64TestBranch(I64 v,Bool nz)
+{
+  A64I(A64Cbz(v,A64LabelOff(a64.tmpi->ic_data),nz));
+}
+
+U0 A64AndBranch(Bool nz)
+{//if (a&b) goto label
+  CIntermediateCode *tmpi=a64.tmpi;
+  I64 v1,v2,it;
+  Bool full=FALSE;
+  v2=A64Arg2();
+  v1=A64Arg1();
+  it=tmpi->arg1.type.raw_type;
+  if (tmpi->arg2.type.raw_type<it)
+    it=tmpi->arg2.type.raw_type;
+  if (tmpi->arg1.type&MDF_IMM || tmpi->arg2.type&MDF_IMM)
+    full=TRUE;
+  A64I(A64Alu(A64OP_AND,A64_T2,v1,v2));
+  if (!full)
+    A64Ext(A64_T2,it&~RTF_UNSIGNED|RTF_UNSIGNED);
+  A64TestBranch(A64_T2,nz);
+}
+
+U0 A64BitOp(I64 code,Bool branch,Bool br_if_set)
+{//Bt Bts Btr Btc LBts LBtr LBtc and their branch forms.
+//Leaves the old bit in T1 and stores it to res (or branches on it).
+  CIntermediateCode *tmpi=a64.tmpi;
+  CICArg *bit_arg,*base_arg;
+  I64 vb,vbit,base_reg,off,retry,op=0;
+  Bool by_val=ToBool(tmpi->ic_flags&ICF_BY_VAL),
+	locked=(code==IC_LBTS||code==IC_LBTR||code==IC_LBTC);
+  switch (code) {
+    case IC_BTS: case IC_LBTS: case IC_BR_BTS: case IC_BR_NOT_BTS:
+      op=A64OP_ORR; break;
+    case IC_BTR: case IC_LBTR: case IC_BR_BTR: case IC_BR_NOT_BTR:
+      op=A64OP_BIC; break;
+    case IC_BTC: case IC_LBTC: case IC_BR_BTC: case IC_BR_NOT_BTC:
+      op=A64OP_EOR; break;
+  }
+  if (branch && tmpi->ic_flags&ICF_SWAP) {
+    bit_arg=&tmpi->arg2;
+    base_arg=&tmpi->arg1;
+  } else {
+    bit_arg=&tmpi->arg1;
+    base_arg=&tmpi->arg2;
+  }
+//Stack order: arg2 first.
+  if (bit_arg==&tmpi->arg2) {
+    vbit=A64Get(bit_arg->type,bit_arg->reg,bit_arg->disp,A64_T0);
+    A64Mov(A64_T0,vbit);
+  }
+  if (by_val && base_arg->type&MDF_REG) {
+    vb=A64R(base_arg->reg);
+    if (bit_arg==&tmpi->arg1) {
+      vbit=A64Get(bit_arg->type,bit_arg->reg,bit_arg->disp,A64_T0);
+      A64Mov(A64_T0,vbit);
+    }
+    A64I(0x92401400|(A64_T0<<5)|A64_IP1);	//AND IP1,T0,63
+    A64I(A64Movz(A64_IP0,1));
+    A64I(A64DP2(A64OP_LSLV,A64_T0,A64_IP0,A64_IP1));
+    A64I(A64Tst(vb,A64_T0));
+    A64I(A64Cset(A64_T1,A64C_NE));
+    if (op)
+      A64I(A64Alu(op,vb,vb,A64_T0));
+  } else {
+    if (by_val) {
+      if (base_arg->type&(MDF_STK|MDF_IMM))
+	A64Err("Bit op on a non-memory value");
+      base_reg=A64Addr(base_arg->type,base_arg->reg,base_arg->disp,&off);
+      A64AddConst(A64_T3,base_reg,off);
+    } else {
+      vb=A64Get(base_arg->type,base_arg->reg,base_arg->disp,A64_T3);
+      A64Mov(A64_T3,vb);
+    }
+    if (bit_arg==&tmpi->arg1) {
+      vbit=A64Get(bit_arg->type,bit_arg->reg,bit_arg->disp,A64_T0);
+      A64Mov(A64_T0,vbit);
+    }
+//Bit strings: byte address = base+bit>>3 (signed), bit = bit&7.
+    A64I(0x8B800000|(A64_T0<<16)|(3<<10)|(A64_T3<<5)|A64_T3); //ADD T3,T3,T0,ASR 3
+    A64I(0x92400800|(A64_T0<<5)|A64_IP1);	//AND IP1,T0,7
+    A64I(A64Movz(A64_IP0,1));
+    A64I(A64DP2(A64OP_LSLV,A64_T0,A64_IP0,A64_IP1));
+    retry=a64.rip;
+    if (locked)
+      A64I(A64Ldaxrb(A64_T2,A64_T3));
+    else
+      A64I(A64LSImm(A64LS_LDRB,A64_T2,A64_T3,0));
+    A64I(A64Tst(A64_T2,A64_T0));
+    A64I(A64Cset(A64_T1,A64C_NE));
+    if (op) {
+      A64I(A64Alu(op,A64_T2,A64_T2,A64_T0));
+      if (locked) {
+	A64I(A64Stlxrb(A64_IP0,A64_T2,A64_T3));
+	A64I(A64Cbz(A64_IP0,retry-a64.rip,TRUE));
+      } else
+	A64I(A64LSImm(A64LS_STRB,A64_T2,A64_T3,0));
+    }
+  }
+  if (branch)
+    A64TestBranch(A64_T1,br_if_set);
+  else
+    A64Res(A64_T1);
+}
+
+U0 A64Switch(Bool nobound)
+{
+  CIntermediateCode *tmpi=a64.tmpi;
+  CCodeMisc *lb=tmpi->ic_data;
+  I64 v1,v2;
+  if (!nobound) {
+    v2=A64Arg2();
+    v1=A64Arg1();
+    A64I(A64Cmp(v1,v2));
+    A64I(A64Bcond(A64C_HS,A64LabelOff(lb->dft,0)));
+  } else
+    v1=A64Arg1();
+//Table of I32 offsets from the table start, placed after the code.
+  if (lb->addr==INVALID_PTR)
+    A64I(A64Adr(A64_IP0,0));
+  else
+    A64I(A64Adr(A64_IP0,lb->addr-a64.rip));
+  A64I(0xB8A07800|(v1<<16)|(A64_IP0<<5)|A64_IP1); //LDRSW IP1,[IP0,v1,LSL 2]
+  A64I(A64Alu(A64OP_ADD,A64_IP0,A64_IP0,A64_IP1));
+  A64I(A64Br(A64_IP0));
+}
+
+U0 A64Enter(COptReg *reg_offsets)
+{
+  CCmpCtrl *cc=a64.cc;
+  CIntermediateCode *tmpi=a64.tmpi;
+  CHashClass *tmpc;
+  I64 i;
+  A64I(0xA9BF7BFD);			//STP X29,X30,[SP,-16]!
+  A64I(A64AddImm(A64_FP,A64_SP,0));	//MOV X29,SP
+  if (tmpi->ic_data)
+    A64AddConst(A64_SP,A64_SP,-tmpi->ic_data);
+  if (cc->htc.fun) {
+    if (Bt(&cc->htc.fun->flags,Ff_INTERRUPT))
+      A64Err("interrupt functions are not supported on ARM64; "
+	    "use an asm exception vector");
+    A64PushRegs(cc->htc.fun->used_reg_mask&
+	  (REGG_LOCAL_VARS|REGG_LOCAL_NON_PTR_VARS));
+    for (i=0;i<REG_REGS_NUM;i++)
+      if (reg_offsets[i].offset>0 && reg_offsets[i].offset!=I64_MAX) {
+	tmpc=OptClassFwd(reg_offsets[i].m->member_class);
+	A64Ld(A64LoadOp(tmpc->raw_type),A64Reg(i),A64_FP,
+	      reg_offsets[i].offset);
+      }
+  }
+}
+
+U0 A64Leave()
+{
+  CCmpCtrl *cc=a64.cc;
+  CHashFun *f=cc->htc.fun;
+  if (f)
+    A64PopRegs(f->used_reg_mask&(REGG_LOCAL_VARS|REGG_LOCAL_NON_PTR_VARS));
+  A64I(A64AddImm(A64_SP,A64_FP,0));	//MOV SP,X29
+  A64I(0xA8C17BFD);			//LDP X29,X30,[SP],16
+  if (f && f->arg_cnt &&
+	(Bt(&f->flags,Ff_RET1) || Bt(&f->flags,Ff_ARGPOP)) &&
+	!Bt(&f->flags,Ff_NOARGPOP))
+    A64AddConst(A64_SP,A64_SP,f->arg_cnt<<3);
+  A64I(A64Ret);
+}
+
+U0 A64Que(I64 code)
+{
+  I64 r1,r2;
+  if (code==IC_QUE_INS || code==IC_QUE_INS_REV) {
+    r2=A64Arg2();
+    A64Mov(A64_T1,r2);
+    r2=A64_T1;
+  }
+  r1=A64Arg1();
+  A64Mov(A64_T0,r1);
+  r1=A64_T0;
+  switch (code) {
+    case IC_QUE_INIT:
+      A64I(A64LSImm(A64LS_STRX,r1,r1,0));
+      A64I(A64LSImm(A64LS_STRX,r1,r1,8));
+      break;
+    case IC_QUE_INS: //Insert r2 after r1
+      A64I(A64LSImm(A64LS_LDRX,A64_T3,r1,0));
+      A64I(A64LSImm(A64LS_STRX,r2,r1,0));
+      A64I(A64LSImm(A64LS_STRX,A64_T3,r2,0));
+      A64I(A64LSImm(A64LS_STRX,r1,r2,8));
+      A64I(A64LSImm(A64LS_STRX,r2,A64_T3,8));
+      break;
+    case IC_QUE_INS_REV: //Insert r2 before r1
+      A64I(A64LSImm(A64LS_LDRX,A64_T3,r1,8));
+      A64I(A64LSImm(A64LS_STRX,r2,A64_T3,0));
+      A64I(A64LSImm(A64LS_STRX,r1,r2,0));
+      A64I(A64LSImm(A64LS_STRX,A64_T3,r2,8));
+      A64I(A64LSImm(A64LS_STRX,r2,r1,8));
+      break;
+    case IC_QUE_REM:
+      A64I(A64LSImm(A64LS_LDRX,A64_T3,r1,0));
+      A64I(A64LSImm(A64LS_LDRX,A64_T2,r1,8));
+      A64I(A64LSImm(A64LS_STRX,A64_T3,A64_T2,0));
+      A64I(A64LSImm(A64LS_STRX,A64_T2,A64_T3,8));
+      break;
+  }
+}
+
+U0 A64Swap(I64 code)
+{
+  I64 p1,p2,t=RT_U64;
+  switch (code) {
+    case IC_SWAP_U8:  t=RT_U8;  break;
+    case IC_SWAP_U16: t=RT_U16; break;
+    case IC_SWAP_U32: t=RT_U32; break;
+  }
+  p2=A64Arg2();
+  p1=A64Arg1();
+  A64I(A64LSImm(A64LoadOp(t),A64_T2,p1,0));
+  A64I(A64LSImm(A64LoadOp(t),A64_T3,p2,0));
+  A64I(A64LSImm(A64StoreOp(t),A64_T2,p2,0));
+  A64I(A64LSImm(A64StoreOp(t),A64_T3,p1,0));
+}
+
+U0 A64FTemplate(I64 code)
+{//Built-in F64 functions. Sin/Cos/Tan/Atan/` have no ARM64 instruction.
+  I64 v=A64Arg1();
+  A64I(A64FmovDX(0,v));
+  switch (code) {
+    case IC_SQR:  A64I(A64Fop2(A64OP_FMUL,0,0,0)); break;
+    case IC_ABS:  A64I(A64Fop1(A64OP_FABS,0,0)); break;
+    case IC_SQRT: A64I(A64Fop1(A64OP_FSQRT,0,0)); break;
+    default:
+      A64Err("Sin/Cos/Tan/Atan/power are not built in on ARM64 yet");
+  }
+  A64I(A64FmovXD(A64_T2,0));
+  A64Mov(0,A64_T2);
+  A64Res(A64_T2);
+}
+
+U0 A64Ic(COptReg *reg_offsets)
+{//Code for one intermediate code.
+  CIntermediateCode *tmpi=a64.tmpi;
+  CCodeMisc *lb;
+  CExternUsage *tmpeu;
+  CHashFun *tmpf;
+  I64 v1,v2,i,code=tmpi->ic_code;
+
+  switch (code) {
+    case IC_NOP1:
+    case IC_NOP2:
+    case IC_PUSH_CMP:
+    case IC_CALL_END2:
+    case IC_END:
+    case IC_ADD_RSP1:
+    case IC_RETURN_VAL2:
+    case IC_GET_RAX:
+      break;
+
+    case IC_LABEL:
+      lb=tmpi->ic_data;
+      lb->addr=a64.rip;
+      if (lb->flags&CMF_POP_CMP) {//Branches from chained compares land past these
+	A64I(A64AddImm(A64_SP,A64_SP,8,TRUE));
+	A64I(A64AddImm(A64_SP,A64_SP,8));
+      }
+      if (lb->type==CMT_ASM_LABEL)
+	A64Err("asm labels in functions are not supported on ARM64 yet");
+      break;
+    case IC_JMP:
+      A64I(A64B(A64LabelOff(tmpi->ic_data,0)));
+      break;
+    case IC_SUB_CALL: //Calls a switch start:/end: block; returns with IC_RET
+      A64I(A64Adr(A64_IP0,12));
+      A64Push(A64_IP0);
+      A64I(A64B(A64LabelOff(tmpi->ic_data,0)));
+      break;
+    case IC_RET:
+      A64Pop(A64_IP0);
+      A64I(A64Br(A64_IP0));
+      break;
+    case IC_ENTER:
+      A64Enter(reg_offsets);
+      break;
+    case IC_LEAVE:
+      A64Leave;
+      break;
+    case IC_ADD_RSP:
+      A64AddConst(A64_SP,A64_SP,tmpi->ic_data);
+      break;
+
+    case IC_CALL:
+      A64I(A64Bl(tmpi->ic_data-A64PC));
+      break;
+    case IC_CALL_EXTERN: //Patched in $LK,"AOTGlblsResolve",A="MN:AOTGlblsResolve"$
+      if (a64.buf) {
+	tmpf=tmpi->ic_data;
+	tmpeu=CAlloc(sizeof(CExternUsage));
+	tmpeu->next=tmpf->ext_lst;
+	tmpf->ext_lst=tmpeu;
+	tmpeu->rip=A64PC;
+      }
+      A64I(A64Bl(0));
+      break;
+    case IC_CALL_INDIRECT:
+      A64Ld(A64LS_LDRX,A64_IP0,A64_SP,tmpi->ic_data);
+      A64I(A64Blr(A64_IP0));
+      break;
+    case IC_CALL_INDIRECT2:
+      A64AdrAbs(A64_IP0,tmpi->ic_data);
+      A64I(A64LSImm(A64LS_LDRX,A64_IP0,A64_IP0,0));
+      A64I(A64Blr(A64_IP0));
+      break;
+    case IC_CALL_IMPORT:
+    case IC_ADDR_IMPORT:
+      A64Err("ARM64 images can't import symbols; define it in the image");
+      break;
+    case IC_HEAP_GLBL:
+      A64Err("OPTf_GLBLS_ON_DATA_HEAP is not supported on ARM64");
+      break;
+
+    case IC_CALL_START:
+    case IC_PUSH_REGS:
+      A64PushRegs(tmpi->ic_data);
+      break;
+    case IC_CALL_END:
+      A64PopRegs(tmpi->ic_data);
+      A64Res(0);
+      break;
+    case IC_POP_REGS:
+      A64PopRegs(tmpi->ic_data);
+      break;
+    case IC_PUSH:
+      A64Push(A64Arg1);
+      break;
+    case IC_POP:
+      A64Pop(0);
+      break;
+
+    case IC_ABS_ADDR:
+      A64AdrAbs(A64_T2,tmpi->ic_data);
+      A64Res(A64_T2);
+      break;
+    case IC_RIP:
+      A64I(A64Adr(A64_T2,0));
+      A64Res(A64_T2);
+      break;
+    case IC_STR_CONST:
+    case IC_GET_LABEL:
+      lb=tmpi->ic_data;
+      if (lb->addr==INVALID_PTR)
+	A64I(A64Adr(A64_T2,0));
+      else
+	A64I(A64Adr(A64_T2,lb->addr-a64.rip));
+      A64Res(A64_T2);
+      break;
+
+    case IC_HOLYC_TYPECAST:
+    case IC_ADDR:
+    case IC_MOV:
+      A64Res(A64Arg1);
+      break;
+    case IC_LEA:
+      v1=A64Addr(tmpi->arg1.type,tmpi->arg1.reg,tmpi->arg1.disp,&i);
+      A64AddConst(A64_T2,v1,i);
+      A64Res(A64_T2);
+      break;
+    case IC_DEREF:
+      i=tmpi->res.type.raw_type;
+      if (i>tmpi->arg1_type_pointed_to)
+	i=tmpi->arg1_type_pointed_to;
+      v1=A64Arg1();
+      A64Ld(A64LoadOp(i),A64_T2,v1,0);
+      A64Res(A64_T2);
+      break;
+
+    case IC_COM:
+      v1=A64Arg1();
+      A64I(A64Alu(A64OP_ORN,A64_T2,A64_ZR,v1));
+      A64Res(A64_T2);
+      break;
+    case IC_NOT:
+      v1=A64Arg1();
+      A64I(A64CmpImm(v1,0));
+      A64I(A64Cset(A64_T2,A64C_EQ));
+      A64Res(A64_T2);
+      break;
+    case IC_UNARY_MINUS:
+      v1=A64Arg1();
+      if (tmpi->res.type.raw_type==RT_F64) {
+	A64I(A64FmovDX(0,v1));
+	A64I(A64Fop1(A64OP_FNEG,0,0));
+	A64I(A64FmovXD(A64_T2,0));
+      } else
+	A64I(A64Alu(A64OP_SUB,A64_T2,A64_ZR,v1));
+      A64Res(A64_T2);
+      break;
+
+    case IC_DEREF_PP: A64DerefIncDec(FALSE); break;
+    case IC_DEREF_MM: A64DerefIncDec(TRUE);  break;
+    case IC__PP:      A64IncDec(FALSE,TRUE);  break;
+    case IC__MM:      A64IncDec(TRUE,TRUE);   break;
+    case IC_PP_:      A64IncDec(FALSE,FALSE); break;
+    case IC_MM_:      A64IncDec(TRUE,FALSE);  break;
+
+    case IC_SHL:
+    case IC_SHR:
+      v2=A64Arg2();
+      v1=A64Arg1();
+      A64IntOp(code,A64_T2,v1,v2,A64Unsigned);
+      A64Res(A64_T2);
+      break;
+    case IC_SHL_CONST:
+      v1=A64Arg1();
+      A64I(A64LslImm(A64_T2,v1,tmpi->ic_data));
+      A64Res(A64_T2);
+      break;
+    case IC_SHR_CONST:
+      v1=A64Arg1();
+      if (A64Unsigned)
+	A64I(A64LsrImm(A64_T2,v1,tmpi->ic_data));
+      else
+	A64I(A64AsrImm(A64_T2,v1,tmpi->ic_data));
+      A64Res(A64_T2);
+      break;
+    case IC_AND:
+    case IC_OR:
+    case IC_XOR:
+      v2=A64Arg2();
+      v1=A64Arg1();
+      A64IntOp(code,A64_T2,v1,v2,FALSE);
+      A64Res(A64_T2);
+      break;
+    case IC_ADD:
+    case IC_SUB:
+    case IC_MUL:
+    case IC_DIV:
+    case IC_MOD:
+      v2=A64Arg2();
+      v1=A64Arg1();
+      if (tmpi->ic_flags&ICF_USE_INT)
+	A64IntOp(code,A64_T2,v1,v2,ToBool(tmpi->ic_class->raw_type&RTF_UNSIGNED));
+      else
+	A64FloatOp(code,A64_T2,v1,v2);
+      A64Res(A64_T2);
+      break;
+    case IC_ADD_CONST:
+      v1=A64Arg1();
+      A64AddConst(A64_T2,v1,tmpi->ic_data);
+      A64Res(A64_T2);
+      break;
+    case IC_SUB_CONST:
+      v1=A64Arg1();
+      A64AddConst(A64_T2,v1,-tmpi->ic_data);
+      A64Res(A64_T2);
+      break;
+    case IC_POWER:
+      A64Err("` (power) is not built in on ARM64 yet");
+      break;
+
+    case IC_EQU_EQU:
+    case IC_NOT_EQU:
+      A64Compare(FALSE);
+      break;
+    case IC_LESS:
+    case IC_GREATER_EQU:
+    case IC_GREATER:
+    case IC_LESS_EQU:
+      A64Compare(!(tmpi->ic_flags&ICF_USE_INT));
+      break;
+    case IC_AND_AND:
+    case IC_OR_OR:
+    case IC_XOR_XOR:
+      v2=A64Arg2();
+      v1=A64Arg1();
+      A64I(A64CmpImm(v1,0));
+      A64I(A64Cset(A64_T2,A64C_NE));
+      A64I(A64CmpImm(v2,0));
+      A64I(A64Cset(A64_T3,A64C_NE));
+      if (code==IC_AND_AND)
+	A64I(A64Alu(A64OP_AND,A64_T2,A64_T2,A64_T3));
+      else if (code==IC_OR_OR)
+	A64I(A64Alu(A64OP_ORR,A64_T2,A64_T2,A64_T3));
+      else
+	A64I(A64Alu(A64OP_EOR,A64_T2,A64_T2,A64_T3));
+      A64Res(A64_T2);
+      break;
+
+    case IC_ASSIGN:    A64Assign; break;
+    case IC_ASSIGN_PP: A64AssignIncDec(FALSE); break;
+    case IC_ASSIGN_MM: A64AssignIncDec(TRUE);  break;
+    case IC_SHL_EQU:
+    case IC_SHR_EQU:
+    case IC_MUL_EQU:
+    case IC_DIV_EQU:
+    case IC_MOD_EQU:
+    case IC_AND_EQU:
+    case IC_OR_EQU:
+    case IC_XOR_EQU:
+    case IC_ADD_EQU:
+    case IC_SUB_EQU:
+      A64OpEqu;
+      break;
+
+    case IC_BR_ZERO:
+    case IC_BR_NOT_ZERO:
+      v1=A64Arg1();
+      A64TestBranch(v1,code==IC_BR_NOT_ZERO);
+      break;
+    case IC_BR_MM_ZERO:
+    case IC_BR_MM_NOT_ZERO:
+      A64IncDec(TRUE,FALSE);
+      A64TestBranch(A64_T2,code==IC_BR_MM_NOT_ZERO);
+      break;
+    case IC_BR_EQU_EQU:
+    case IC_BR_NOT_EQU:
+      A64CmpBranch(FALSE,FALSE);
+      break;
+    case IC_BR_LESS:
+    case IC_BR_GREATER_EQU:
+    case IC_BR_GREATER:
+    case IC_BR_LESS_EQU:
+      A64CmpBranch(FALSE,ToBool(tmpi->ic_flags&ICF_USE_F64));
+      break;
+    case IC_BR_EQU_EQU2:
+    case IC_BR_NOT_EQU2:
+    case IC_BR_LESS2:
+    case IC_BR_GREATER_EQU2:
+    case IC_BR_GREATER2:
+    case IC_BR_LESS_EQU2:
+      A64CmpBranch(TRUE,FALSE);
+      break;
+    case IC_BR_AND_ZERO:     A64AndBranch(FALSE); break;
+    case IC_BR_AND_NOT_ZERO: A64AndBranch(TRUE);  break;
+    case IC_BR_BT:
+    case IC_BR_BTS:
+    case IC_BR_BTR:
+    case IC_BR_BTC:
+      A64BitOp(code,TRUE,TRUE);
+      break;
+    case IC_BR_NOT_BT:
+    case IC_BR_NOT_BTS:
+    case IC_BR_NOT_BTR:
+    case IC_BR_NOT_BTC:
+      A64BitOp(code,TRUE,FALSE);
+      break;
+    case IC_BT:
+    case IC_BTS:
+    case IC_BTR:
+    case IC_BTC:
+    case IC_LBTS:
+    case IC_LBTR:
+    case IC_LBTC:
+      A64BitOp(code,FALSE,FALSE);
+      break;
+    case IC_SWITCH:	    A64Switch(FALSE); break;
+    case IC_NOBOUND_SWITCH: A64Switch(TRUE);  break;
+
+    case IC_RETURN_VAL:
+    case IC_SET_RAX:
+      A64Mov(0,A64Arg1);
+      break;
+    case IC_GET_RBP: A64Mov(0,A64_FP); break;
+    case IC_SET_RBP: A64Mov(A64_FP,A64Arg1); break;
+    case IC_GET_RSP: A64Mov(0,A64_SP); break;
+    case IC_SET_RSP: A64Mov(A64_SP,A64Arg1); break;
+    case IC_FS: A64I(A64Mrs(0,A64SR_TPIDR_EL1)); break;
+    case IC_GS: A64I(A64Mrs(0,A64SR_TPIDRRO_EL0)); break;
+    case IC_MOV_FS:
+    case IC_MOV_GS:
+      if (code==IC_MOV_FS)
+	A64I(A64Mrs(A64_IP0,A64SR_TPIDR_EL1));
+      else
+	A64I(A64Mrs(A64_IP0,A64SR_TPIDRRO_EL0));
+      A64Ld(A64LoadOp(CmpRawType(tmpi->ic_class)),A64_T2,A64_IP0,tmpi->ic_data);
+      A64Res(A64_T2);
+      break;
+    case IC_RDTSC:      A64I(A64Mrs(0,A64SR_CNTVCT_EL0)); break;
+    case IC_GET_RFLAGS: A64I(A64Mrs(0,A64SR_DAIF)); break;
+    case IC_SET_RFLAGS: A64I(A64Msr(A64SR_DAIF,A64Arg1)); break;
+    case IC_CLFLUSH:
+      A64I(0xD50B7E20|A64Arg1);	//DC CIVAC
+      break;
+    case IC_INVLPG:
+      A64I(A64LsrImm(A64_IP0,A64Arg1,12));
+      A64I(0xD5088360|A64_IP0);	//TLBI VAAE1IS
+      A64I(A64_DSB_ISH);
+      A64I(A64_ISB);
+      break;
+    case IC_IN_U8:
+    case IC_IN_U16:
+    case IC_IN_U32:
+    case IC_OUT_U8:
+    case IC_OUT_U16:
+    case IC_OUT_U32:
+      A64Err("ARM64 has no I/O ports; use memory-mapped I/O");
+      break;
+    case IC_CARRY:
+    case IC_BR_CARRY:
+    case IC_BR_NOT_CARRY:
+      A64Err("The carry flag is not available on ARM64");
+      break;
+
+    case IC_BSF:
+    case IC_BSR:
+      v1=A64Arg1();
+      if (code==IC_BSF) {
+	A64I(A64Rbit(A64_T2,v1));
+	A64I(A64Clz(A64_T2,A64_T2));
+      } else {
+	A64I(A64Clz(A64_T2,v1));
+	A64I(A64Movz(A64_IP0,63));
+	A64I(A64Alu(A64OP_SUB,A64_T2,A64_IP0,A64_T2));
+      }
+      A64I(A64CmpImm(v1,0));
+      A64I(0xDA800000|(A64_ZR<<16)|(A64C_NE<<12)|(A64_T2<<5)|0); //CSINV X0,T2,XZR,NE
+      break;
+    case IC_SIGN_I64:
+      v1=A64Arg1();
+      A64I(A64CmpImm(v1,0));
+      A64I(A64Cset(A64_T2,A64C_GT));
+      A64I(0xDA800000|(A64_ZR<<16)|(A64C_GE<<12)|(A64_T2<<5)|0); //CSINV X0,T2,XZR,GE
+      break;
+    case IC_ABS_I64:
+      v1=A64Arg1();
+      A64I(A64CmpImm(v1,0));
+      A64I(A64Csneg(0,v1,v1,A64C_GE));
+      break;
+    case IC_MIN_I64:
+    case IC_MAX_I64:
+    case IC_MIN_U64:
+    case IC_MAX_U64:
+      v2=A64Arg2();
+      v1=A64Arg1();
+      A64I(A64Cmp(v1,v2));
+      switch (code) {
+	case IC_MIN_I64: i=A64C_LT; break;
+	case IC_MAX_I64: i=A64C_GT; break;
+	case IC_MIN_U64: i=A64C_LO; break;
+	case IC_MAX_U64: i=A64C_HI; break;
+      }
+      A64I(A64Csel(0,v1,v2,i));
+      break;
+    case IC_MOD_U64: //arg2 points to the dividend, which gets the quotient
+      v2=A64Arg2();
+      A64Mov(A64_T1,v2);
+      v1=A64Arg1();
+      A64I(A64LSImm(A64LS_LDRX,A64_T2,A64_T1,0));
+      A64I(A64DP2(A64OP_UDIV,A64_IP0,A64_T2,v1));
+      A64I(A64LSImm(A64LS_STRX,A64_IP0,A64_T1,0));
+      A64I(A64Madd(0,A64_IP0,v1,A64_T2,TRUE));
+      break;
+    case IC_SQR_I64:
+    case IC_SQR_U64:
+      v1=A64Arg1();
+      A64I(A64Madd(0,v1,v1,A64_ZR));
+      break;
+    case IC_SWAP_U8:
+    case IC_SWAP_U16:
+    case IC_SWAP_U32:
+    case IC_SWAP_I64:
+      A64Swap(code);
+      break;
+    case IC_QUE_INIT:
+    case IC_QUE_INS:
+    case IC_QUE_INS_REV:
+    case IC_QUE_REM:
+      A64Que(code);
+      break;
+    case IC_STRLEN:
+      v1=A64Arg1();
+      A64Mov(A64_IP0,v1);
+      A64I(A64LSPost(A64LS_LDRB,A64_IP1,A64_IP0,1));
+      A64I(A64Cbz(A64_IP1,-4,TRUE));
+      A64I(A64Alu(A64OP_SUB,0,A64_IP0,v1));
+      A64I(A64AddImm(0,0,1,TRUE));
+      break;
+    case IC_TOUPPER:
+      v1=A64Arg1();
+      A64I(A64AddImm(A64_IP0,v1,'a',TRUE));
+      A64I(A64CmpImm(A64_IP0,'z'-'a'));
+      A64I(A64AddImm(A64_IP1,v1,32,TRUE));
+      A64I(A64Csel(0,A64_IP1,v1,A64C_LS));
+      break;
+    case IC_TO_I64:
+      v1=A64Arg1();
+      A64I(A64FmovDX(0,v1));
+      A64I(A64Fcvtzs(0,0));
+      break;
+    case IC_TO_F64:
+      v1=A64Arg1();
+      A64I(A64Scvtf(0,v1));
+      A64I(A64FmovXD(0,0));
+      break;
+    case IC_TO_BOOL:
+      v1=A64Arg1();
+      A64I(A64CmpImm(v1,0));
+      A64I(A64Cset(0,A64C_NE));
+      break;
+    case IC_SQR:
+    case IC_ABS:
+    case IC_SQRT:
+    case IC_SIN:
+    case IC_COS:
+    case IC_TAN:
+    case IC_ATAN:
+      A64FTemplate(code);
+      break;
+    case IC_ASM:
+      A64Err("asm blocks inside functions are not supported on ARM64 yet; "
+	    "put the asm at file level");
+      break;
+    default:
+      A64Err("Missing ARM64 handler for this intermediate code");
+  }
+}
+
+I64 A64Pass(CCmpCtrl *cc,COptReg *reg_offsets,U8 *buf,CDbgInfo **_dbg)
+{//One code generation pass. buf=NULL sizes the code and places labels.
+  CIntermediateCode *tmpi,*tmpi_next;
+  CCodeMisc *lb;
+  CDbgInfo *dbg_info=NULL;
+  I64 i,num_lines=cc->max_line+1-cc->min_line;
+  I32 *tbl;
+
+  a64.cc=cc;
+  a64.buf=buf;
+  a64.rip=0;
+  a64.rip_base=cc->aotc->rip;
+  a64.tmpi=NULL;
+  if (_dbg) {
+    *_dbg=dbg_info=CAlloc(offset(CDbgInfo.body)+sizeof(U32)*(num_lines+1));
+    dbg_info->min_line=cc->min_line;
+    dbg_info->max_line=cc->max_line;
+    dbg_info->body[0]=a64.rip_base;
+  }
+  tmpi=cc->coc.coc_head.next;
+  while (tmpi->ic_code) {
+    tmpi_next=tmpi->next;
+    if (tmpi->ic_code==IC_NOP1 || tmpi->ic_code==IC_NOP2)
+      OptFree(tmpi);
+    else {
+      a64.tmpi=tmpi;
+      if (dbg_info && cc->min_line<=tmpi->ic_line<=cc->max_line) {
+	i=tmpi->ic_line-cc->min_line;
+	if (!dbg_info->body[i])
+	  dbg_info->body[i]=A64PC;
+      }
+      A64Ic(reg_offsets);
+    }
+    tmpi=tmpi_next;
+  }
+  a64.tmpi=NULL;
+
+//Jump tables (I32 offsets from the table start), then string constants.
+  lb=cc->coc.coc_next_misc;
+  while (lb!=&cc->coc.coc_next_misc) {
+    if (lb->type==CMT_JMP_TABLE) {
+      lb->addr=a64.rip;
+      if (buf) {
+	tbl=buf+a64.rip;
+	for (i=0;i<lb->range;i++)
+	  tbl[i]=OptLabelFwd(lb->jmp_table[i])->addr-lb->addr;
+      }
+      a64.rip+=lb->range*sizeof(I32);
+    }
+    lb=lb->next;
+  }
+  lb=cc->coc.coc_next_misc;
+  while (lb!=&cc->coc.coc_next_misc) {
+    if (lb->type==CMT_STR_CONST) {
+      lb->addr=a64.rip;
+      if (buf)
+	MemCpy(buf+a64.rip,lb->str,lb->st_len);
+      a64.rip+=lb->st_len;
+    } else if (lb->type==CMT_FLOAT_CONSTS)
+      A64Err("F64 constant tables are x86-only");
+    lb=lb->next;
+  }
+  if (dbg_info)
+    dbg_info->body[num_lines]=A64PC;
+  return a64.rip;
+}
+#exe {Option(OPTf_WARN_PAREN,ON);};

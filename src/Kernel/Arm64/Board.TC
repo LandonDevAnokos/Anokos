@@ -1,0 +1,70 @@
+//ARM64 boards.
+//
+//One kernel image runs on every board; the boot code picked a memory layout
+//from where it was loaded and the CPU type ($LK,"ARM64_MMU_INIT",A="FF:::/Kernel/Arm64/KStart.TC,ARM64_MMU_INIT"$), and that
+//picks the board here. Raspberry Pi support is laid out but untested on
+//hardware: the Pi 3 and 4 run under QEMU (raspi3b, raspi4b).
+//
+//To add a board: add a layout to KStart (memory map), a BOARD_ number in
+//$LK,"KernelA64.TH",A="FI:::/Kernel/Arm64/KernelA64.TH"$ and a case below.
+
+CArmBoard arm_board;
+
+U0 ArmBoardInit()
+{
+  MemSet(&arm_board,0,sizeof(CArmBoard));
+  arm_board.num=arm64_layout;
+  switch (arm64_layout) {
+    case BOARD_QEMU_VIRT:
+      arm_board.name="QEMU virt";
+      arm_board.uart_base=0x09000000;
+      arm_board.has_psci=TRUE;
+      break;
+    case BOARD_RPI3: //BCM2837: Pi 3B/3B+/3A+, Zero 2 W
+      arm_board.name="Raspberry Pi 3";
+      arm_board.periph_base=0x3F000000;
+      arm_board.uart_base=0x3F201000;
+      arm_board.uart_clk=48000000;
+      arm_board.mbox_base=0x3F00B880;
+      break;
+    case BOARD_RPI4: //BCM2711
+      arm_board.name="Raspberry Pi 4";
+      arm_board.periph_base=0xFE000000;
+      arm_board.uart_base=0xFE201000;
+      arm_board.uart_clk=48000000;
+      arm_board.mbox_base=0xFE00B880;
+      break;
+    case BOARD_RPI5: //BCM2712. The debug UART is on the 3-pin header.
+      arm_board.name="Raspberry Pi 5";
+      arm_board.periph_base=0x107C000000;
+      arm_board.uart_base=0x107D001000;
+      arm_board.mbox_base=0x107C013880;
+      break;
+    default:
+      arm_board.name="Unknown";
+  }
+}
+
+public U0 ArmReboot()
+{//Reset the machine.
+  U32 *pm_rstc,*pm_wdog;
+  if (arm_board.has_psci)
+    ArmHvc(PSCI_SYSTEM_RESET);
+  else if (arm_board.periph_base && arm_board.num!=BOARD_RPI5) {
+//BCM283x/2711 power manager watchdog: reset in 10 ticks.
+    pm_rstc=arm_board.periph_base+0x10001C;
+    pm_wdog=arm_board.periph_base+0x100024;
+    *pm_wdog=0x5A000000|10;
+    *pm_rstc=0x5A000000|(*pm_rstc&~0x30)|0x20;
+  }
+  while (TRUE)
+    ArmWfi;
+}
+
+public U0 ArmPowerOff()
+{//Power off (QEMU virt), or halt.
+  if (arm_board.has_psci)
+    ArmHvc(PSCI_SYSTEM_OFF);
+  while (TRUE)
+    ArmWfi;
+}

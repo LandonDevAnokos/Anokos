@@ -4,6 +4,11 @@ U0 AsmResolve(CCmpCtrl *cc,CAsmUnresolvedRef *tmpu,U8 *label,Bool undefined)
   CAsmUndefHash *tmpauh;
   I64 res=Call(tmpu->machine_code);
   if (undefined) {
+    if (tmpu->type>=IET_A64_FIRST) {
+      PrintErr("ARM64 asm can't reference undefined/imported symbol at line:%04d\n",
+	    tmpu->line_num);
+      LexExcept(cc);
+    }
     tmpauh=tmpu->asm_undef_hash;
     while (tmpauh) {
       if (tmpauh->hash->type & HTF_UNRESOLVED) {
@@ -16,6 +21,9 @@ U0 AsmResolve(CCmpCtrl *cc,CAsmUnresolvedRef *tmpu,U8 *label,Bool undefined)
       }
       tmpauh=tmpauh->next; //Technically, more than one won't work.
     }
+  } else if (tmpu->type>=IET_A64_FIRST) {
+    A64PatchRel(cc,tmpu->rip,tmpu->type,res-tmpu->rel_rip,label);
+    return;
   } else if (!(tmpu->type&IEF_IMM_NOT_REL)) {
     res-=tmpu->rel_rip;
     if (tmpu->type==IET_REL_I8 && !(I8_MIN<=res<=I8_MAX) ||
@@ -158,8 +166,13 @@ U0 AOTGlblsResolve(CCmpCtrl *cc,CAOT *tmpaot)
 	  tmpeu=tmpf->ext_lst;
 	  while (tmpeu) {
 	    tmpeu8=tmpeu->next;
-	    j=tmpf->exe_addr-(tmpeu->rip+4);
-	    AOTStoreCodeU8At(cc,tmpeu->rip,j.u8[0],j.u8[1],j.u8[2],j.u8[3]);
+	    if (Bt(&cc->opts,OPTf_ARM64))
+	      A64PatchRel(cc,tmpeu->rip,IET_A64_B26,
+		    tmpf->exe_addr-tmpeu->rip,tmpf->str);
+	    else {
+	      j=tmpf->exe_addr-(tmpeu->rip+4);
+	      AOTStoreCodeU8At(cc,tmpeu->rip,j.u8[0],j.u8[1],j.u8[2],j.u8[3]);
+	    }
 	    Free(tmpeu);
 	    tmpeu=tmpeu8;
 	  }

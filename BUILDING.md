@@ -3,7 +3,13 @@
 ## Requirements
 
 - Python 3
-- [VirtualBox](https://www.virtualbox.org/) (used to compile the kernel and to test-boot)
+- [QEMU](https://www.qemu.org/) (`qemu-system-x86_64`, and `qemu-system-aarch64` for ARM64) or,
+  on x86 hosts, [VirtualBox](https://www.virtualbox.org/). These compile the kernel and test-boot it.
+
+The build tools use VirtualBox on x86-64 hosts that have it, and QEMU everywhere else, including
+Apple Silicon Macs. Pick one with `--vm-backend qemu` or `--vm-backend vbox`. If your package
+manager has no QEMU for your system (Homebrew on macOS 14, for example), `sh tools/build_qemu.sh`
+builds one into `build/qemu/`, which the tools look in first.
 
 ## Commands
 
@@ -14,15 +20,22 @@ python tools/anokos_build.py all                # build the compiler and kernel,
 python tools/anokos_build.py all --update-src   # same, and copy the new binaries into src/
 python tools/anokos_build.py iso                # only rebuild the ISO from src/
 python tools/anokos_build.py run                # boot build/Anokos.ISO in a VM and take a screenshot
+python tools/anokos_build.py arm64              # compile the ARM64 kernel inside Anokos
+python tools/anokos_build.py run-arm64          # boot it in qemu-system-aarch64 (--board virt/rpi3/rpi4)
 ```
 
+Add `--headless` to `run` or `run-arm64` to run without a QEMU window. The ARM64 port is described
+in [ARM64.md](ARM64.md).
+
 `build/Anokos.ISO` boots on any x86-64 PC or VM with legacy BIOS boot, an IDE/ATAPI CD drive and
-at least 512 MB of memory. The tools create a VirtualBox VM called `AnokosBuild` in `build/vm/`.
+at least 512 MB of memory. With VirtualBox the tools create a VM called `AnokosBuild` in
+`build/vm/`. With QEMU they run a PC (i440FX, IDE CD, standard VGA) and talk to it through a monitor
+socket in `build/`.
 
 ## How the build works
 
 TerryC is only compiled by its own compiler, which runs inside the OS itself, so the compiler and
-kernel are bootstrapped in a VM:
+kernel are bootstrapped in an x86-64 VM (QEMU or VirtualBox):
 
 1. **Stage 1** (`anokos_build.py kernel`): builds an ISO of stock TempleOS with `src/Compiler` and
    `src/Kernel` added under TempleOS's `.HC`/`.HH` file names, boots it headless in VirtualBox,
@@ -31,6 +44,11 @@ kernel are bootstrapped in a VM:
    copied into `src/0000Boot/`, `src/Compiler/` and `src/Kernel/`.
 2. **Stage 2** (`anokos_build.py iso`): writes `build/Anokos.ISO` from `src/` with the new
    compiler and kernel.
+
+3. **Stage 3** (`anokos_build.py arm64`, optional): boots x86-64 Anokos with
+   `tools/stage3/Arm64Build.TC` added to its start-up. The Anokos compiler builds
+   `src/Kernel/KernelArm64.PRJ` with its ARM64 back end, and the image comes back over the serial
+   port as `build/arm64/kernel8.img`. See [ARM64.md](ARM64.md).
 
 Everything outside `Kernel/` and `Compiler/` (the Anokos system layer and apps) is compiled
 just-in-time at boot, so changes there only need stage 2.

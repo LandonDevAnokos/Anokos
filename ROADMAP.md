@@ -13,7 +13,7 @@ Plans may change as the project grows. Discussion and proposals are welcome in G
 | 2 | [PCI and PCI Express support](#milestone-2-pci-and-pci-express-support) | Planned |
 | 3 | [Ring 3 (user mode)](#milestone-3-ring-3-user-mode) | Planned |
 | 4 | [GPU and graphics support](#milestone-4-gpu-and-graphics-support) | Planned |
-| 5 | [Multi-architecture support](#milestone-5-multi-architecture-support) | Planned |
+| 5 | [Multi-architecture support](#milestone-5-multi-architecture-support) | ARM64 in progress |
 
 ### Why this order
 
@@ -145,16 +145,21 @@ Run Anokos on more than x86-64.
 > **Note:** PowerBook G4 models use 32-bit PowerPC processors, not ppc64. Supporting them would
 > need a separate 32-bit PowerPC port, to be decided once the ppc64 port is underway.
 
+**Status:** the ARM64 port has started ahead of milestones 2-4. Progress and the per-file plan
+are in [ARM64.md](ARM64.md).
+
 **Scope**
 
 - [ ] Split architecture-specific code (boot, interrupts, memory management, context switching)
-      from portable kernel code
-- [ ] TerryC compiler back ends that generate ARM64 and ppc64 machine code
+      from portable kernel code (ARM64: boot, KUtils, KMathA and string asm done)
+- [ ] TerryC compiler back ends that generate ARM64 and ppc64 machine code (ARM64 code
+      generator and assembler working; ppc64 not started)
 - [ ] Boot paths for each platform: Raspberry Pi firmware and device tree, and Open Firmware on
-      Power Macs
+      Power Macs (ARM64 boot image runs on QEMU virt and the emulated Pi 3 and 4)
 - [ ] Drivers for each platform's essentials: display, keyboard, timer, interrupt controller and
       storage
-- [ ] Cross-build support in the host tools, so all architectures can be built from one machine
+- [x] Cross-build support in the host tools, so all architectures can be built from one machine
+      (`anokos_build.py arm64`)
 
 **Done when** Anokos boots to its terminal on a Raspberry Pi and a Power Mac G5, as well as on
 x86-64.

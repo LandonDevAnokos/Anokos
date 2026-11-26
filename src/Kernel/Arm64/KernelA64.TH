@@ -1,0 +1,47 @@
+//ARM64 kernel declarations: the boot values $LK,"KStart",A="FI:::/Kernel/Arm64/KStart.TC"$ stores and
+//the small asm helpers it provides.
+
+#help_index "ARM64"
+_extern ARM64_LOAD_BASE	U8 *arm64_load_base; //Where the loader put the image
+_extern ARM64_DTB	U8 *arm64_dtb;	//Device tree from the loader, or NULL
+_extern ARM64_LAYOUT	I64 arm64_layout; //$LK,"ARM64_LAYOUT_VIRT",A="MN:ARM64_LAYOUT_VIRT"$ etc.
+_extern ARM64_BOOT_EL	I64 arm64_boot_el; //Exception level the loader entered at
+
+_extern _ARM_ESR	I64 ArmEsr();	//Exception syndrome
+_extern _ARM_FAR	I64 ArmFar();	//Fault address
+_extern _ARM_ELR	I64 ArmElr();	//Exception return address
+_extern _ARM_MIDR	I64 ArmMidr();	//CPU id
+_extern _ARM_MPIDR	I64 ArmMpidr();	//CPU number in the system
+_extern _ARM_CUR_EL	I64 ArmCurEl();	//Current exception level
+_extern _ARM_SCTLR	I64 ArmSctlr();	//System control register
+_extern _ARM_CNTFRQ	I64 ArmCntFrq(); //Generic timer frequency
+_extern _ARM_CNTPCT	I64 ArmCntPct(); //Generic timer count
+_extern _ARM_WFI	U0 ArmWfi();	//Wait for interrupt
+_extern _ARM_DSB	U0 ArmDsb();	//Data synchronization barrier
+_extern _ARM_HVC	I64 ArmHvc(I64 fn,I64 a1=0,I64 a2=0,I64 a3=0);
+_extern _ARM_SMC	I64 ArmSmc(I64 fn,I64 a1=0,I64 a2=0,I64 a3=0);
+
+//PSCI firmware calls (QEMU virt implements these)
+#define PSCI_SYSTEM_OFF		0x84000008
+#define PSCI_SYSTEM_RESET	0x84000009
+
+#help_index "ARM64/Board"
+//Boards. The numbers match the boot memory layouts in KStart.
+#define BOARD_QEMU_VIRT		0
+#define BOARD_RPI3		1
+#define BOARD_RPI4		2
+#define BOARD_RPI5		3
+#define BOARDS_NUM		4
+
+public class CArmBoard
+{
+  I64	num;
+  U8	*name;
+  U8	*uart_base;	//PL011
+  I64	uart_clk;	//Hz, 0: keep the firmware's divisor
+  U8	*periph_base;	//SoC peripheral window, NULL if none
+  U8	*mbox_base;	//VideoCore mailbox (Raspberry Pi)
+  Bool	has_psci;
+};
+
+#help_index ""

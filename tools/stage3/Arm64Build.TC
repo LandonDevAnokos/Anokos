@@ -1,0 +1,84 @@
+//Anokos ARM64 cross build. Runs inside Anokos (booted from the ISO made
+//by tools/anokos_build.py arm64), compiles the ARM64 kernel with the
+//Anokos compiler and sends the boot image to the host over COM1.
+
+#define SER_BASE	0x3F8
+
+U0 A64BSerInit()
+{//115200 8N1, FIFOs on.
+  OutU8(SER_BASE+1,0);
+  OutU8(SER_BASE+3,0x80);
+  OutU8(SER_BASE+0,1);
+  OutU8(SER_BASE+1,0);
+  OutU8(SER_BASE+3,3);
+  OutU8(SER_BASE+2,0xC7);
+  OutU8(SER_BASE+4,0x0B);
+}
+
+U0 A64BSerPutC(U8 ch)
+{
+  I64 i=0;
+  while (!(InU8(SER_BASE+5)&0x20) && i++<1000000);
+  OutU8(SER_BASE,ch);
+}
+
+U0 A64BSerPutS(U8 *st)
+{
+  while (*st)
+    A64BSerPutC(*st++);
+}
+
+U0 A64BSerPrint(U8 *fmt,...)
+{
+  U8 *buf=StrPrintJoin(NULL,fmt,argc,argv);
+  A64BSerPutS(buf);
+  Free(buf);
+}
+
+Bool A64BMirrorPutKey(I64 ch,I64)
+{//Copy all screen output to the serial log.
+  if (ch) A64BSerPutC(ch);
+  return FALSE;
+}
+
+Bool A64BMirrorPutS(U8 *st)
+{
+  A64BSerPutS(st);
+  return FALSE;
+}
+
+Bool A64BSendFile(U8 *filename,U8 *tag)
+{
+  I64 size,i;
+  U8 *buf,*hex="0123456789ABCDEF";
+  if (!FileFind(filename) || !(buf=FileRead(filename,&size))) {
+    A64BSerPrint("\n@@NOFILE %s %s\n",tag,filename);
+    return FALSE;
+  }
+  A64BSerPrint("\n@@BEGIN %s %d\n",tag,size);
+  for (i=0;i<size;i++) {
+    A64BSerPutC(hex[buf[i]>>4]);
+    A64BSerPutC(hex[buf[i]&15]);
+    if ((i&63)==63)
+      A64BSerPutC('\n');
+  }
+  A64BSerPrint("\n@@END %s\n",tag);
+  Free(buf);
+  return TRUE;
+}
+
+I64 a64b_errs=-1;
+A64BSerInit;
+KeyDevAdd(&A64BMirrorPutKey,&A64BMirrorPutS,0x10000000,FALSE);
+A64BSerPrint("\n@@ARM64 START\n");
+try {
+  Cd("::/Kernel");
+  a64b_errs=Cmp("::/Kernel/KernelArm64","B:/KernelArm64","B:/Kernel8");
+} catch
+  PutExcept;
+A64BSerPrint("\n@@ERRORS %d\n",a64b_errs);
+if (!a64b_errs) {
+  A64BSendFile("B:/Kernel8.IMG","IMAGE");
+  A64BSendFile("B:/KernelArm64.MAP.Z","MAP");
+}
+A64BSerPrint("\n@@ARM64 DONE\n");

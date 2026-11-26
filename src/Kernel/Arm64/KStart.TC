@@ -1,0 +1,534 @@
+//ARM64 kernel entry. Takes the place of KStart16/32/64 on ARM64.
+//
+//The image starts with an arm64 Linux "Image" header, which both QEMU
+//(-kernel) and the Raspberry Pi firmware (kernel8.img) know how to load.
+//The loader jumps here with the MMU off and X0=device tree (or 0), at any
+//exception level (EL3, EL2 or EL1) and at any 4 KiB aligned address. This:
+//  1. parks every CPU but the boot CPU,
+//  2. drops to EL1,
+//  3. adds the load address to every absolute address the compiler listed
+//     (see $LK,"A64ImageWrite",A="MN:A64ImageWrite"$),
+//  4. turns the MMU on with an identity map (TerryC classes are packed,
+//     so TerryC code does unaligned accesses, which need Normal memory),
+//  5. runs the module's top-level code and calls $LK,"KMainArm64",A="MN:KMainArm64"$.
+//
+//Memory layouts for the early identity map (ARM64_LAYOUT):
+//  0 QEMU virt	RAM from 1 GiB, devices below
+//  1 Raspberry Pi 3	RAM below 0x3F000000, peripherals above
+//  2 Raspberry Pi 4	RAM, peripherals at 0xFC000000-0xFFFFFFFF
+//  3 Raspberry Pi 5	RAM from 0, peripherals from 64 GiB
+//The kernel can build finer page tables later from the device tree.
+
+#define ARM64_LAYOUT_VIRT	0
+#define ARM64_LAYOUT_RPI3	1
+#define ARM64_LAYOUT_RPI4	2
+#define ARM64_LAYOUT_RPI5	3
+
+#define ARM64_PTE_NORMAL	0x705 //Block, AttrIdx 1 (WB), inner shareable, AF
+#define ARM64_PTE_DEVICE	0x0060000000000401 //Block, AttrIdx 0, AF, XN
+#define ARM64_PTE_TABLE		3
+
+asm {
+//arm64 Image header (Linux Documentation/arch/arm64/booting.rst)
+ARM64_IMAGE_START::
+	B	ARM64_ENTRY		//code0
+	DU32	0;			//code1
+	DU64	0x80000;		//text_offset
+ARM64_IMAGE_SIZE::
+	DU64	0x400000;		//image_size: the compiler adds the file size
+	DU64	0xA;			//flags: little endian, 4 KiB pages, anywhere
+	DU64	0,0,0;			//res2-res4
+	DU8	'A','R','M',0x64;	//magic
+	DU32	0;			//res5
+
+//Filled in by the compiler ($LK,"A64ImageWrite",A="MN:A64ImageWrite"$)
+ARM64_RELOCS::	DU64	0;
+ARM64_MAINS::	DU64	0;
+//Filled in at boot
+ARM64_LOAD_BASE::	DU64	0;
+ARM64_DTB::		DU64	0;
+ARM64_LAYOUT::		DU64	0;
+ARM64_BOOT_EL::		DU64	0;
+
+ARM64_ENTRY::
+	MOV	X19,X0			//Device tree
+	MRS	X1,MPIDR_EL1		//Park all but the boot CPU
+	AND	X1,X1,0xFFFFFF
+	CBZ	X1,@@02
+@@01:	WFE
+	B	@@01
+
+@@02:	MRS	X1,CurrentEL
+	LSR	X1,X1,2
+	MOV	X23,X1			//Remember the entry EL
+	CMP	X1,3
+	BEQ	@@05
+	CMP	X1,2
+	BEQ	@@10
+	B	@@20
+
+@@05:	MOV	X1,0x531		//EL3: NS, RES1, HVC on, EL2 is AArch64
+	MSR	SCR_EL3,X1
+	MOV	X1,0x3C9		//EL2h, interrupts masked
+	MSR	SPSR_EL3,X1
+	ADR	X1,@@10
+	MSR	ELR_EL3,X1
+	ERET
+
+@@10:	MOV	X1,0x80000000		//EL2: EL1 is AArch64
+	MSR	HCR_EL2,X1
+	MRS	X1,CNTHCTL_EL2		//EL1 may use the physical timer
+	ORR	X1,X1,3
+	MSR	CNTHCTL_EL2,X1
+	MSR	CNTVOFF_EL2,XZR
+	MOV	X1,0x33FF		//No FP/SIMD traps
+	MSR	CPTR_EL2,X1
+	MSR	HSTR_EL2,XZR
+	MRS	X1,MIDR_EL1
+	MSR	VPIDR_EL2,X1
+	MRS	X1,MPIDR_EL1
+	MSR	VMPIDR_EL2,X1
+	MOV	X1,0x30D00800
+	MSR	SCTLR_EL1,X1
+	MOV	X1,0x3C5		//EL1h, interrupts masked
+	MSR	SPSR_EL2,X1
+	ADR	X1,@@20
+	MSR	ELR_EL2,X1
+	ERET
+
+//EL1. SCTLR: MMU/caches off; SA/SA0 off because TerryC uses 8-byte
+//stack slots, so SP is only 8-byte aligned.
+@@20:	MOV	X1,0x30D00800
+	MSR	SCTLR_EL1,X1
+	MOV	X1,0x300000		//CPACR_EL1.FPEN: FP/SIMD on
+	MSR	CPACR_EL1,X1
+	ISB
+
+//Self-relocate: *(base+off)+=base for each table entry
+	ADR	X20,ARM64_IMAGE_START
+	ADR	X1,ARM64_RELOCS
+	LDR	X1,[X1]
+	ADD	X1,X20,X1
+	LDR	X2,[X1],8
+@@25:	CBZ	X2,@@30
+	LDR	W3,[X1],4
+	LDR	X4,[X20,X3]
+	ADD	X4,X4,X20
+	STR	X4,[X20,X3]
+	SUB	X2,X2,1
+	B	@@25
+
+@@30:	ADR	X1,ARM64_LOAD_BASE
+	STR	X20,[X1]
+	ADR	X1,ARM64_DTB
+	STR	X19,[X1]
+	ADR	X1,ARM64_BOOT_EL
+	STR	X23,[X1]
+
+//Boot stack at the end of the reserved image area
+	ADR	X1,ARM64_IMAGE_SIZE
+	LDR	X1,[X1]
+	ADD	X1,X20,X1
+	AND	X1,X1,0xFFFFFFFFFFFFFFF0
+	MOV	SP,X1
+
+	ADR	X1,ARM64_VECTORS
+	MSR	VBAR_EL1,X1
+
+	BL	ARM64_MMU_INIT
+
+//Run top-level code blocks. Like x86, they return by popping the
+//return address ($LK,"IC_RET",A="MN:IC_RET"$).
+	ADR	X21,ARM64_MAINS
+	LDR	X21,[X21]
+	ADD	X21,X20,X21
+	LDR	X22,[X21],8
+@@40:	CBZ	X22,@@45
+	LDR	W1,[X21],4
+	ADD	X1,X20,X1
+	ADR	X2,@@42
+	STR	X2,[SP,-8]!
+	BR	X1
+@@42:	SUB	X22,X22,1
+	B	@@40
+
+@@45:	ADR	X1,ARM64_DTB
+	LDR	X1,[X1]
+	STR	X1,[SP,-8]!		//TerryC args go on the stack
+	BL	KMainArm64
+@@50:	WFI
+	B	@@50
+
+//************************************
+//Early identity map: 4 KiB granule, 39-bit addresses, 1 GiB blocks, and
+//2 MiB blocks in the two GiBs where the Raspberry Pis mix RAM and devices.
+ARM64_MMU_INIT::
+	MOV	X9,X30			//Calls ARM64_MMU_L2 below
+//Pick the layout: loaded at/above 1 GiB -> QEMU virt, else a Pi by CPU.
+	MOV	X10,ARM64_LAYOUT_VIRT
+	MOV	X1,0x40000000
+	CMP	X20,X1
+	BHS	@@05
+	MRS	X1,MIDR_EL1
+	UBFX	X1,X1,4,12		//Part number
+	MOV	X10,ARM64_LAYOUT_RPI4
+	MOV	X2,0xD08		//Cortex-A72: Pi 4
+	CMP	X1,X2
+	BEQ	@@05
+	MOV	X10,ARM64_LAYOUT_RPI5
+	MOV	X2,0xD0B		//Cortex-A76: Pi 5
+	CMP	X1,X2
+	BEQ	@@05
+	MOV	X10,ARM64_LAYOUT_RPI3	//Cortex-A53 and others: Pi 3
+@@05:	ADR	X1,ARM64_LAYOUT
+	STR	X10,[X1]
+
+//X11=kinds table for this layout (16 GiB worth), X12=kind above 16 GiB
+	ADR	X11,ARM64_LAYOUT_KINDS
+	ADD	X11,X11,X10,LSL 4
+	MOV	X12,0
+	CMP	X10,ARM64_LAYOUT_VIRT
+	BNE	@@07
+	MOV	X12,1			//virt: RAM continues up to 256 GiB
+
+@@07:	ADR	X13,ARM64_PT_L1
+	MOV	X14,0			//GiB index
+@@10:	MOV	X15,X12
+	CMP	X14,16
+	BHS	@@12
+	LDRB	W15,[X11,X14]
+@@12:	CMP	X14,256
+	BLO	@@13
+	MOV	X15,0			//Above 256 GiB: devices
+@@13:	LSL	X1,X14,30		//Block address
+	CMP	X15,1
+	BEQ	@@14
+	CMP	X15,2
+	BEQ	@@15
+	CMP	X15,3
+	BEQ	@@16
+	MOV	X2,ARM64_PTE_DEVICE
+	ORR	X2,X2,X1
+	B	@@18
+@@14:	MOV	X2,ARM64_PTE_NORMAL
+	ORR	X2,X2,X1
+	B	@@18
+@@15:	ADR	X2,ARM64_PT_L2A		//GiB 0, devices from 0x3F000000
+	MOV	X3,504
+	B	@@17
+@@16:	ADR	X2,ARM64_PT_L2B		//GiB 3, devices from 0xFC000000
+	MOV	X3,480
+@@17:	BL	ARM64_MMU_L2
+	ORR	X2,X2,ARM64_PTE_TABLE
+@@18:	STR	X2,[X13,X14,LSL 3]
+	ADD	X14,X14,1
+	CMP	X14,512
+	BLO	@@10
+
+	MOV	X1,0xFF00		//MAIR: 0 Device-nGnRnE, 1 Normal WB
+	MSR	MAIR_EL1,X1
+	MRS	X1,ID_AA64MMFR0_EL1	//IPS=PARange
+	AND	X1,X1,7
+	LSL	X1,X1,32
+	MOV	X2,0x803519		//T0SZ 25, WB WA, inner shareable, no TTBR1
+	ORR	X1,X1,X2
+	MSR	TCR_EL1,X1
+	MSR	TTBR0_EL1,X13
+	DSB	ISH
+	TLBI	VMALLE1
+	DSB	ISH
+	ISB
+	MRS	X1,SCTLR_EL1
+	MOV	X2,0x1005		//M, C, I
+	ORR	X1,X1,X2
+	MOV	X2,0x1A			//A, SA, SA0 off
+	BIC	X1,X1,X2
+	MSR	SCTLR_EL1,X1
+	ISB
+	RET	X9
+
+//Fill the L2 table at X2 for the GiB in X1: 2 MiB blocks, entries from
+//X3 on are devices. Keeps X2. Uses X4-X7.
+ARM64_MMU_L2::
+	MOV	X4,0
+@@05:	LSL	X5,X4,21
+	ADD	X5,X5,X1
+	MOV	X6,ARM64_PTE_NORMAL
+	CMP	X4,X3
+	BLO	@@10
+	MOV	X6,ARM64_PTE_DEVICE
+@@10:	ORR	X6,X6,X5
+	STR	X6,[X2,X4,LSL 3]
+	ADD	X4,X4,1
+	CMP	X4,512
+	BLO	@@05
+	RET
+
+//Kind of each of the first 16 GiB per layout: 0 device, 1 RAM,
+//2 GiB 0 split at 0x3F000000, 3 GiB 3 split at 0xFC000000
+ARM64_LAYOUT_KINDS::
+	DU8	0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1;	//virt
+	DU8	2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;	//Pi 3
+	DU8	1,1,1,3,1,1,1,1,0,0,0,0,0,0,0,0;	//Pi 4
+	DU8	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1;	//Pi 5
+
+	ALIGN	4096,0
+ARM64_PT_L1::	DU8	4096 DUP(0);
+ARM64_PT_L2A::	DU8	4096 DUP(0);
+ARM64_PT_L2B::	DU8	4096 DUP(0);
+
+//************************************
+//Exception vectors (VBAR_EL1). Every entry saves the registers and calls
+//$LK,"ArmExcept",A="MN:ArmExcept"$(kind,regs). Nothing is recoverable yet.
+	ALIGN	2048,0
+ARM64_VECTORS::
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,0
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,1
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,2
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,3
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,4
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,5
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,6
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,7
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,8
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,9
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,10
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,11
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,12
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,13
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,14
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+	SUB	SP,SP,272
+	STP	X0,X1,[SP]
+	MOV	X0,15
+	B	ARM64_EXCEPT
+	ALIGN	128,0
+
+//Frame: X0-X30 at [SP+8*n], ELR at +248, SPSR at +256, ESR at +264.
+ARM64_EXCEPT::
+	STP	X2,X3,[SP,16]
+	STP	X4,X5,[SP,32]
+	STP	X6,X7,[SP,48]
+	STP	X8,X9,[SP,64]
+	STP	X10,X11,[SP,80]
+	STP	X12,X13,[SP,96]
+	STP	X14,X15,[SP,112]
+	STP	X16,X17,[SP,128]
+	STP	X18,X19,[SP,144]
+	STP	X20,X21,[SP,160]
+	STP	X22,X23,[SP,176]
+	STP	X24,X25,[SP,192]
+	STP	X26,X27,[SP,208]
+	STP	X28,X29,[SP,224]
+	MRS	X1,ELR_EL1
+	STP	X30,X1,[SP,240]
+	MRS	X1,SPSR_EL1
+	MRS	X2,ESR_EL1
+	STP	X1,X2,[SP,256]
+	MOV	X1,SP
+	STR	X1,[SP,-8]!		//ArmExcept(kind,regs): args pushed right to left
+	STR	X0,[SP,-8]!
+	BL	ArmExcept		//TerryC callees pop their own args
+	LDP	X30,X1,[SP,240]
+	MSR	ELR_EL1,X1
+	LDR	X1,[SP,256]
+	MSR	SPSR_EL1,X1
+	LDP	X2,X3,[SP,16]
+	LDP	X4,X5,[SP,32]
+	LDP	X6,X7,[SP,48]
+	LDP	X8,X9,[SP,64]
+	LDP	X10,X11,[SP,80]
+	LDP	X12,X13,[SP,96]
+	LDP	X14,X15,[SP,112]
+	LDP	X16,X17,[SP,128]
+	LDP	X18,X19,[SP,144]
+	LDP	X20,X21,[SP,160]
+	LDP	X22,X23,[SP,176]
+	LDP	X24,X25,[SP,192]
+	LDP	X26,X27,[SP,208]
+	LDP	X28,X29,[SP,224]
+	LDP	X0,X1,[SP]
+	ADD	SP,SP,272
+	ERET
+
+//************************************
+//Small helpers TerryC calls ($LK,"KernelA64.TH",A="FI:::/Kernel/Arm64/KernelA64.TH"$).
+//Args are on the stack, the first at [SP] on entry, and like every
+//TerryC function with a fixed arg count the callee pops them.
+_ARM_ESR::	MRS	X0,ESR_EL1
+		RET
+_ARM_FAR::	MRS	X0,FAR_EL1
+		RET
+_ARM_ELR::	MRS	X0,ELR_EL1
+		RET
+_ARM_MIDR::	MRS	X0,MIDR_EL1
+		RET
+_ARM_MPIDR::	MRS	X0,MPIDR_EL1
+		RET
+_ARM_CUR_EL::	MRS	X0,CurrentEL
+		LSR	X0,X0,2
+		RET
+_ARM_SCTLR::	MRS	X0,SCTLR_EL1
+		RET
+_ARM_CNTFRQ::	MRS	X0,CNTFRQ_EL0
+		RET
+_ARM_CNTPCT::	ISB
+		MRS	X0,CNTPCT_EL0
+		RET
+_ARM_WFI::	WFI
+		RET
+_ARM_DSB::	DSB	SY
+		RET
+_ARM_HVC::	LDP	X0,X1,[SP]	//HVC/SMC call: fn,a1,a2,a3 (PSCI)
+		LDP	X2,X3,[SP,16]
+		ADD	SP,SP,32
+		HVC	0
+		RET
+_ARM_SMC::	LDP	X0,X1,[SP]
+		LDP	X2,X3,[SP,16]
+		ADD	SP,SP,32
+		SMC	0
+		RET
+}
+
+//************************************
+//Kernel globals that x86 keeps in the KStart16/KStart32 asm data area.
+//Same labels and sizes, so $LK,"KernelB.TH",A="FI:::/Kernel/KernelB.TH"$ binds to them unchanged.
+//The x86-only ones (GDT, E820 map, PCI BIOS) are kept, zeroed, so shared
+//code still compiles; the ARM64 code fills in what applies.
+asm {
+	ALIGN	8,0
+SYS_BOOT_SRC::			DU32	BOOT_SRC_NULL;
+SYS_BOOT_BLK::			DU32	0;
+SYS_BOOT_PATCH_TABLE_BASE::	DU32	0;
+SYS_RUN_LEVEL::			DU32	0;
+#exe {StreamPrint("SYS_COMPILE_TIME:: DU64 0x%X;",Now);}
+MEM_BOOT_BASE::		DU32	0;
+MEM_E801::		DU16	0,0;
+MEM_E820::		DU8	MEM_E820_ENTRIES_NUM*sizeof(CMemE820) DUP (0);
+MEM_PHYSICAL_SPACE::	DU64	0;
+SYS_PCI_BUSES::		DU16	0;
+	ALIGN	16,0
+SYS_GDT::		DU8	sizeof(CGDT) DUP (0);
+	ALIGN	8,0
+SYS_VBE_INFO::		DU8	sizeof(CVbeBootInfo) DUP (0);
+
+	ALIGN	8,0
+MEM_HEAP_BASE::		DU64	0;
+MEM_HEAP_LIMIT::	DU64	0;
+MEM_PAGE_SIZE::		DU64	0;
+MEM_MAPPED_SPACE::	DU64	0;
+MEM_2MEG_NUM::		DU64	0;
+MEM_1GIG_NUM::		DU64	0;
+MEM_512GIG_NUM::	DU64	0;
+MEM_PML2::		DU64	0;
+MEM_PML3::		DU64	0;
+MEM_PML4::		DU64	0;
+
+SYS_MEM_INIT_FLAG::	DU8	0;
+SYS_MEM_INIT_VAL::	DU8	0;
+SYS_HEAP_INIT_FLAG::	DU8	0;
+SYS_HEAP_INIT_VAL::	DU8	0;
+SYS_VAR_INIT_FLAG::	DU8	0;
+SYS_VAR_INIT_VAL::	DU8	0;
+SYS_STAFF_MODE_FLAG::	DU8	0;
+SYS_HEAP_DBG_FLAG::	DU8	0;
+
+	ALIGN	8,0
+SYS_CTRL_ALT_FLAGS::	DU64	0;
+SYS_EXTERN_TABLE::	DU64	0;
+SYS_CODE_BP::		DU64	0;
+SYS_DATA_BP::		DU64	0;
+
+SYS_PROGRESSES::
+SYS_PROGRESS1::		DU64	0;
+SYS_PROGRESS1_MAX::	DU64	0;
+SYS_PROGRESS1_T0::	DU64	0;
+SYS_PROGRESS1_TF::	DU64	0;
+SYS_PROGRESS1_DESC::	DU8	PROGRESS_DESC_LEN DUP(0);
+SYS_PROGRESS2::		DU64	0;
+SYS_PROGRESS2_MAX::	DU64	0;
+SYS_PROGRESS2_T0::	DU64	0;
+SYS_PROGRESS2_TF::	DU64	0;
+SYS_PROGRESS2_DESC::	DU8	PROGRESS_DESC_LEN DUP(0);
+SYS_PROGRESS3::		DU64	0;
+SYS_PROGRESS3_MAX::	DU64	0;
+SYS_PROGRESS3_T0::	DU64	0;
+SYS_PROGRESS3_TF::	DU64	0;
+SYS_PROGRESS3_DESC::	DU8	PROGRESS_DESC_LEN DUP(0);
+SYS_PROGRESS4::		DU64	0;
+SYS_PROGRESS4_MAX::	DU64	0;
+SYS_PROGRESS4_T0::	DU64	0;
+SYS_PROGRESS4_TF::	DU64	0;
+SYS_PROGRESS4_DESC::	DU8	PROGRESS_DESC_LEN DUP(0);
+
+SYS_FOCUS_TASK::	DU64	0;
+SYS_CPU_STRUCTS::	DU64	0;
+SYS_MP_CNT::		DU64	1;
+SYS_MP_CNT_INITIAL::	DU64	1;
+SYS_MP_CNT_LOCK::	DU64	1;
+
+	ALIGN	DFT_CACHE_LINE_WIDTH,0
+SYS_CACHE_LINE_WIDTH::	DU64	DFT_CACHE_LINE_WIDTH;
+	DU8	DFT_CACHE_LINE_WIDTH-8 DUP(0);
+SYS_SEMAS::		DU8	SEMA_SEMAS_NUM*DFT_CACHE_LINE_WIDTH DUP(0);
+}

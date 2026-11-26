@@ -1,0 +1,1103 @@
+#exe {Option(OPTf_WARN_PAREN,OFF);};
+/*ARM64 (AArch64) assembler for asm {} blocks.
+
+Used instead of the x86 instruction parser when $LK,"OPTf_ARM64",A="MN:OPTf_ARM64"$ is on.
+Labels, ALIGN, DU8/DU16/DU32/DU64 and the rest of $LK,"PrsAsmBlk",A="MN:PrsAsmBlk"$ work
+as for x86. Syntax is standard ARM64 except:
+  - Immediates have no '#' (TerryC uses '#' for directives):
+	MOV X0,0x30D00800	ADD SP,SP,16	LDR X1,[X2,8]
+  - Mnemonics, registers and conditions are not case sensitive.
+  - B.EQ and BEQ are both accepted.
+  - MOV Xd,imm64 expands to MOVZ/MOVN/MOVK as needed.
+Label operands (B BL B.cond CBZ CBNZ TBZ TBNZ ADR ADRP LDR-literal) are
+PC relative, so ARM64 images need no relocations for code.
+*/
+
+#define A64K_X	1 //64-bit general register
+#define A64K_W	2 //32-bit general register
+#define A64K_D	3 //64-bit FP/SIMD register
+#define A64K_Q	4 //128-bit FP/SIMD register
+
+U8 *a64_cond_names[16]={"EQ","NE","HS","LO","MI","PL","VS","VC",
+	"HI","LS","GE","LT","GT","LE","AL","NV"};
+
+//System registers: op0<<16+op1<<12+CRn<<8+CRm<<4+op2
+#define A64_SYSREGS_NUM	75
+U8 *a64_sysreg_names[A64_SYSREGS_NUM+1]={
+"CurrentEL","DAIF","NZCV","SPSel","FPCR","FPSR",
+"SCTLR_EL1","SCTLR_EL2","SCTLR_EL3","ACTLR_EL1","CPACR_EL1",
+"HCR_EL2","CPTR_EL2","HSTR_EL2","SCR_EL3",
+"TTBR0_EL1","TTBR1_EL1","TCR_EL1","TTBR0_EL2","TCR_EL2",
+"SPSR_EL1","ELR_EL1","SP_EL0","SPSR_EL2","ELR_EL2","SP_EL1",
+"SPSR_EL3","ELR_EL3","SP_EL2",
+"ESR_EL1","ESR_EL2","ESR_EL3","FAR_EL1","FAR_EL2","PAR_EL1",
+"MAIR_EL1","MAIR_EL2","VBAR_EL1","VBAR_EL2","VBAR_EL3","ISR_EL1",
+"CONTEXTIDR_EL1","TPIDR_EL1","TPIDR_EL0","TPIDRRO_EL0","TPIDR_EL2",
+"MIDR_EL1","MPIDR_EL1","REVIDR_EL1",
+"ID_AA64PFR0_EL1","ID_AA64MMFR0_EL1","ID_AA64ISAR0_EL1",
+"CTR_EL0","DCZID_EL0",
+"CNTFRQ_EL0","CNTPCT_EL0","CNTVCT_EL0",
+"CNTP_TVAL_EL0","CNTP_CTL_EL0","CNTP_CVAL_EL0",
+"CNTV_TVAL_EL0","CNTV_CTL_EL0","CNTV_CVAL_EL0",
+"CNTKCTL_EL1","CNTHCTL_EL2","CNTVOFF_EL2","VPIDR_EL2","VMPIDR_EL2",
+"ICC_SRE_EL1","ICC_IAR1_EL1","ICC_EOIR1_EL1","ICC_PMR_EL1",
+"ICC_IGRPEN1_EL1","ICC_SRE_EL2","ICC_CTLR_EL1",
+NULL};
+I64 a64_sysreg_codes[A64_SYSREGS_NUM]={
+0x30422,0x33421,0x33420,0x30420,0x33440,0x33441,
+0x30100,0x34100,0x36100,0x30101,0x30102,
+0x34110,0x34112,0x34113,0x36110,
+0x30200,0x30201,0x30202,0x34200,0x34202,
+0x30400,0x30401,0x30410,0x34400,0x34401,0x34410,
+0x36400,0x36401,0x36410,
+0x30520,0x34520,0x36520,0x30600,0x34600,0x30740,
+0x30A20,0x34A20,0x30C00,0x34C00,0x36C00,0x30C10,
+0x30D01,0x30D04,0x33D02,0x33D03,0x34D02,
+0x30000,0x30005,0x30006,
+0x30040,0x30070,0x30060,
+0x33001,0x33007,
+0x33E00,0x33E01,0x33E02,
+0x33E20,0x33E21,0x33E22,
+0x33E30,0x33E31,0x33E32,
+0x30E10,0x34E10,0x34E03,0x34000,0x34005,
+0x30CC5,0x30CC0,0x30CC1,0x30460,
+0x30CC7,0x34C95,0x30CC4};
+
+U0 A64Upper(U8 *dst,U8 *src,I64 max)
+{
+  I64 i=0;
+  while (src[i] && i<max-1) {
+    dst[i]=ToUpper(src[i]);
+    i++;
+  }
+  dst[i]=0;
+}
+
+Bool A64RegStr(U8 *st,I64 *_kind,I64 *_r,Bool *_sp)
+{//Is st an ARM64 register name?
+  U8 buf[8];
+  I64 i,n;
+  if (!st || StrLen(st)>=8)
+    return FALSE;
+  A64Upper(buf,st,8);
+  *_sp=FALSE;
+  if (!StrCmp(buf,"SP"))  {*_kind=A64K_X; *_r=31; *_sp=TRUE; return TRUE;}
+  if (!StrCmp(buf,"WSP")) {*_kind=A64K_W; *_r=31; *_sp=TRUE; return TRUE;}
+  if (!StrCmp(buf,"XZR")) {*_kind=A64K_X; *_r=31; return TRUE;}
+  if (!StrCmp(buf,"WZR")) {*_kind=A64K_W; *_r=31; return TRUE;}
+  if (!StrCmp(buf,"LR"))  {*_kind=A64K_X; *_r=30; return TRUE;}
+  if (!StrCmp(buf,"FP"))  {*_kind=A64K_X; *_r=29; return TRUE;}
+  switch (buf[0]) {
+    case 'X': *_kind=A64K_X; break;
+    case 'W': *_kind=A64K_W; break;
+    case 'D': *_kind=A64K_D; break;
+    case 'Q': *_kind=A64K_Q; break;
+    default: return FALSE;
+  }
+  if (!buf[1])
+    return FALSE;
+  n=0;
+  for (i=1;buf[i];i++) {
+    if (!('0'<=buf[i]<='9'))
+      return FALSE;
+    n=n*10+buf[i]-'0';
+  }
+  if (*_kind<=A64K_W && n>30 || n>31)
+    return FALSE;
+  *_r=n;
+  return TRUE;
+}
+
+Bool A64AtReg(CCmpCtrl *cc)
+{
+  I64 k,r;
+  Bool sp;
+  return cc->token==TK_IDENT && A64RegStr(cc->cur_str,&k,&r,&sp);
+}
+
+I64 A64PReg(CCmpCtrl *cc,I64 *_kind,Bool *_sp=NULL)
+{//Parse a register. Returns its number.
+  I64 k,r;
+  Bool sp;
+  if (cc->token!=TK_IDENT || !A64RegStr(cc->cur_str,&k,&r,&sp))
+    LexExcept(cc,"Expecting ARM64 register at ");
+  Lex(cc);
+  if (_kind) *_kind=k;
+  if (_sp) *_sp=sp;
+  return r;
+}
+
+I64 A64PGReg(CCmpCtrl *cc,I64 *_kind,Bool *_sp=NULL)
+{//General purpose register (X or W)
+  I64 r=A64PReg(cc,_kind,_sp);
+  if (*_kind!=A64K_X && *_kind!=A64K_W)
+    LexExcept(cc,"Expecting X or W register at ");
+  return r;
+}
+
+U0 A64PComma(CCmpCtrl *cc)
+{
+  if (cc->token!=',')
+    LexExcept(cc,"Expecting ',' at ");
+  Lex(cc);
+}
+
+Bool A64TryComma(CCmpCtrl *cc)
+{
+  if (cc->token==',') {
+    Lex(cc);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+U0 A64PChar(CCmpCtrl *cc,I64 ch)
+{
+  U8 buf[32];
+  if (cc->token!=ch) {
+    StrPrint(buf,"Expecting '%c' at ",ch);
+    LexExcept(cc,buf);
+  }
+  Lex(cc);
+}
+
+I64 A64PImm(CCmpCtrl *cc)
+{//Constant expression (no '#').
+  return AsmLexExpression(cc);
+}
+
+Bool A64IdentIs(CCmpCtrl *cc,U8 *name)
+{
+  U8 buf[STR_LEN];
+  if (cc->token!=TK_IDENT)
+    return FALSE;
+  A64Upper(buf,cc->cur_str,STR_LEN);
+  return !StrCmp(buf,name);
+}
+
+I64 A64CondStr(U8 *st)
+{
+  U8 buf[8];
+  I64 i;
+  if (!st || StrLen(st)>=8)
+    return -1;
+  A64Upper(buf,st,8);
+  if (!StrCmp(buf,"CS")) return A64C_HS;
+  if (!StrCmp(buf,"CC")) return A64C_LO;
+  for (i=0;i<16;i++)
+    if (!StrCmp(buf,a64_cond_names[i]))
+      return i;
+  return -1;
+}
+
+I64 A64PCond(CCmpCtrl *cc)
+{
+  I64 c;
+  if (cc->token!=TK_IDENT || (c=A64CondStr(cc->cur_str))<0)
+    LexExcept(cc,"Expecting condition (EQ,NE,...) at ");
+  Lex(cc);
+  return c;
+}
+
+Bool A64PShift(CCmpCtrl *cc,I64 *_type,I64 *_amt)
+{//Optional ",LSL n" etc. Call after the comma was seen.
+  if (A64IdentIs(cc,"LSL")) *_type=0;
+  else if (A64IdentIs(cc,"LSR")) *_type=1;
+  else if (A64IdentIs(cc,"ASR")) *_type=2;
+  else if (A64IdentIs(cc,"ROR")) *_type=3;
+  else return FALSE;
+  Lex(cc);
+  *_amt=A64PImm(cc);
+  return TRUE;
+}
+
+I64 A64BitmaskImm(I64 v,Bool is64)
+{//Logical immediate encoding N:immr:imms (13 bits), or -1.
+  I64 size,mask,elem,ones,i,r,pat,rot;
+  if (!is64)
+    v=v&0xFFFFFFFF|(v<<32);
+  if (!v || v==-1)
+    return -1;
+  size=64;
+  while (size>2) {
+    mask=(1<<(size>>1))-1;
+    if ((v&mask)!=((v>>(size>>1))&mask))
+      break;
+    size>>=1;
+  }
+  if (size==64)
+    mask=-1;
+  else
+    mask=(1<<size)-1;
+  elem=v&mask;
+  ones=0;
+  for (i=0;i<size;i++)
+    if (Bt(&elem,i))
+      ones++;
+  if (ones==size)
+    return -1;
+  pat=(1<<ones)-1;
+  for (r=0;r<size;r++) {
+    if (!r)
+      rot=pat;
+    else
+      rot=((pat>>r)|(pat<<(size-r)))&mask;
+    if (rot==elem) {
+      i=(((-size)<<1)|(ones-1))&0x3F;
+      if (size==64)
+	return 0x1000|(r<<6)|i;
+      return (r<<6)|i;
+    }
+  }
+  return -1;
+}
+
+U32 A64Sf(U32 ins,I64 kind)
+{//Clear the 64-bit (sf) bit for W registers.
+  if (kind==A64K_W)
+    return ins&0x7FFFFFFF;
+  return ins;
+}
+
+U0 A64Emit(CCmpCtrl *cc,U32 ins)
+{
+  if (cc->aotc->rip&3)
+    LexExcept(cc,"ARM64 instruction not 4-byte aligned (add ALIGN 4,0) at ");
+  AOTStoreCodeU32(cc,ins);
+}
+
+U0 A64EmitRel(CCmpCtrl *cc,U32 ins,I64 type)
+{//Emit ins with a PC-relative label operand parsed from the source.
+  U8 *mc;
+  I64 val,rip=cc->aotc->rip;
+  CAsmUndefHash *lh=NULL,*gh=NULL;
+  cc->asm_undef_hash=NULL;
+  cc->abs_cnts=0;
+  cc->flags&=~(CCF_UNRESOLVED+CCF_LOCAL);
+  if (!IsLexExpression2Bin(cc,&mc))
+    LexExcept(cc,"Expecting a label at ");
+  if (cc->abs_cnts.externs)
+    LexExcept(cc,"Extern Not Allowed at ");
+  A64Emit(cc,ins);
+  if (cc->flags&CCF_UNRESOLVED) {
+    if (cc->flags&CCF_LOCAL)
+      lh=cc->asm_undef_hash;
+    else
+      gh=cc->asm_undef_hash;
+    cc->asm_undef_hash=NULL;
+    AsmUnresolvedAdd(cc,mc,type,rip,rip,lh,gh,
+	  cc->lex_include_stk->line_num,FALSE);
+  } else {
+    val=Call(mc);
+    Free(mc);
+    if (cc->asm_undef_hash) {
+      LinkedLstDel(cc->asm_undef_hash);
+      cc->asm_undef_hash=NULL;
+    }
+    A64PatchRel(cc,rip,type,val-rip);
+  }
+}
+
+U0 A64PMovImm(CCmpCtrl *cc,I64 d,I64 kind,I64 v)
+{
+  U32 tmp[4];
+  I64 i,cnt,bm;
+  if (kind==A64K_W)
+    v&=0xFFFFFFFF;
+  if (kind==A64K_W && v>>16 && (v&0xFFFF)!=0 && (~v&0xFFFF0000)!=0 &&
+	(bm=A64BitmaskImm(v,FALSE))>=0) {
+    A64Emit(cc,0x32000000|(bm<<10)|(A64_ZR<<5)|d); //ORR Wd,WZR,imm
+    return;
+  }
+  cnt=A64MovImm(tmp,d,v);
+  if (kind==A64K_W && cnt>2) {
+    A64Emit(cc,A64Sf(A64Movz(d,v&0xFFFF),kind));
+    A64Emit(cc,A64Sf(A64Movk(d,(v>>16)&0xFFFF,1),kind));
+    return;
+  }
+  if (cnt>1 && kind==A64K_X && (bm=A64BitmaskImm(v,TRUE))>=0) {
+    A64Emit(cc,0xB2000000|(bm<<10)|(A64_ZR<<5)|d); //ORR Xd,XZR,imm
+    return;
+  }
+  for (i=0;i<cnt;i++)
+    A64Emit(cc,A64Sf(tmp[i],kind));
+}
+
+U0 A64PAddSub(CCmpCtrl *cc,Bool sub,Bool set_flags,Bool no_dst)
+{//ADD ADDS SUB SUBS CMP CMN
+  I64 d=A64_ZR,n,m,kd=A64K_X,kn,km,v,st,amt;
+  Bool dsp=FALSE,nsp,msp,shift12=FALSE;
+  U32 ins;
+  if (!no_dst) {
+    d=A64PGReg(cc,&kd,&dsp);
+    A64PComma(cc);
+  }
+  n=A64PGReg(cc,&kn,&nsp);
+  if (no_dst)
+    kd=kn;
+  A64PComma(cc);
+  if (A64AtReg(cc)) {
+    m=A64PGReg(cc,&km,&msp);
+    st=0;
+    amt=0;
+    if (A64TryComma(cc) && !A64PShift(cc,&st,&amt))
+      LexExcept(cc,"Expecting shift at ");
+    if (dsp || nsp) {//Extended register form (allows SP)
+      if (st || amt>4)
+	LexExcept(cc,"Only LSL 0-4 with SP at ");
+      ins=0x8B206000;
+      if (kd==A64K_W)
+	ins=0x0B204000;
+    } else {
+      ins=A64Sf(0x8B000000,kd)|(st<<22);
+    }
+    if (sub) ins|=0x40000000;
+    if (set_flags) ins|=0x20000000;
+    A64Emit(cc,ins|(m<<16)|(amt<<10)|(n<<5)|d);
+  } else {
+    v=A64PImm(cc);
+    if (A64TryComma(cc)) {
+      if (!A64PShift(cc,&st,&amt) || st || amt!=12 && amt)
+	LexExcept(cc,"Expecting LSL 12 at ");
+      if (amt) v<<=12;
+    }
+    if (v<0) {
+      v=-v;
+      sub=!sub;
+    }
+    if (v>=0x1000) {
+      if (v&0xFFF || v>=0x1000000)
+	LexExcept(cc,"Immediate doesn't fit ADD/SUB (12 bits, optionally <<12) at ");
+      v>>=12;
+      shift12=TRUE;
+    }
+    ins=A64Sf(0x91000000,kd);
+    if (sub) ins|=0x40000000;
+    if (set_flags) ins|=0x20000000;
+    if (shift12) ins|=0x400000;
+    A64Emit(cc,ins|(v<<10)|(n<<5)|d);
+  }
+}
+
+U0 A64PLogic(CCmpCtrl *cc,U32 op_reg,U32 op_imm,Bool no_dst,Bool invert_imm)
+{//AND ANDS ORR EOR BIC ORN EON BICS TST
+  I64 d=A64_ZR,n,m,kd=A64K_X,k,v,st,amt,bm;
+  Bool sp;
+  if (!no_dst) {
+    d=A64PGReg(cc,&kd,&sp);
+    A64PComma(cc);
+  }
+  n=A64PGReg(cc,&k,&sp);
+  if (no_dst)
+    kd=k;
+  A64PComma(cc);
+  if (A64AtReg(cc)) {
+    m=A64PGReg(cc,&k,&sp);
+    st=0;
+    amt=0;
+    if (A64TryComma(cc) && !A64PShift(cc,&st,&amt))
+      LexExcept(cc,"Expecting shift at ");
+    A64Emit(cc,A64Sf(op_reg,kd)|(st<<22)|(m<<16)|(amt<<10)|(n<<5)|d);
+  } else {
+    if (!op_imm)
+      LexExcept(cc,"No immediate form at ");
+    v=A64PImm(cc);
+    if (invert_imm)
+      v=~v;
+    if ((bm=A64BitmaskImm(v,kd==A64K_X))<0)
+      LexExcept(cc,"Immediate is not a valid ARM64 bitmask at ");
+    A64Emit(cc,A64Sf(op_imm,kd)|(bm<<10)|(n<<5)|d);
+  }
+}
+
+U0 A64PMov(CCmpCtrl *cc)
+{
+  I64 d,n,kd,kn;
+  Bool dsp,nsp;
+  d=A64PGReg(cc,&kd,&dsp);
+  A64PComma(cc);
+  if (A64AtReg(cc)) {
+    n=A64PGReg(cc,&kn,&nsp);
+    if (dsp || nsp)
+      A64Emit(cc,A64Sf(A64AddImm(d,n,0),kd));
+    else
+      A64Emit(cc,A64Sf(A64Alu(A64OP_ORR,d,A64_ZR,n),kd));
+  } else
+    A64PMovImm(cc,d,kd,A64PImm(cc));
+}
+
+U0 A64PMovWide(CCmpCtrl *cc,U32 op)
+{//MOVZ MOVN MOVK Rd,imm16{,LSL n}
+  I64 d,k,v,st=0,amt=0;
+  Bool sp;
+  d=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  v=A64PImm(cc);
+  if (A64TryComma(cc) && (!A64PShift(cc,&st,&amt) || st || amt&15))
+    LexExcept(cc,"Expecting LSL 0/16/32/48 at ");
+  A64Emit(cc,A64Sf(op,k)|((amt>>4)<<21)|((v&0xFFFF)<<5)|d);
+}
+
+U0 A64PShiftIns(CCmpCtrl *cc,I64 type)
+{//LSL LSR ASR ROR, register or immediate amount
+  I64 d,n,m,k,s,size;
+  Bool sp;
+  U32 ins;
+  d=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  n=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  if (A64AtReg(cc)) {
+    m=A64PGReg(cc,&k,&sp);
+    A64Emit(cc,A64Sf(0x9AC02000|(type<<10),k)|(m<<16)|(n<<5)|d);
+    return;
+  }
+  s=A64PImm(cc);
+  if (k==A64K_W) {
+    size=32;
+    ins=0x13000000; //SBFM W / EXTR W base, fixed below
+  } else
+    size=64;
+  s&=size-1;
+  switch (type) {
+    case 0: //LSL = UBFM d,n,-s,size-1-s
+      ins=A64Sf(0xD3400000,k);
+      if (k==A64K_W) ins&=~0x400000;
+      A64Emit(cc,ins|((((size-s)&(size-1)))<<16)|((size-1-s)<<10)|(n<<5)|d);
+      break;
+    case 1: //LSR = UBFM d,n,s,size-1
+      ins=A64Sf(0xD3400000,k);
+      if (k==A64K_W) ins&=~0x400000;
+      A64Emit(cc,ins|(s<<16)|((size-1)<<10)|(n<<5)|d);
+      break;
+    case 2: //ASR = SBFM d,n,s,size-1
+      ins=A64Sf(0x93400000,k);
+      if (k==A64K_W) ins&=~0x400000;
+      A64Emit(cc,ins|(s<<16)|((size-1)<<10)|(n<<5)|d);
+      break;
+    case 3: //ROR = EXTR d,n,n,s
+      if (k==A64K_W)
+	ins=0x13800000;
+      else
+	ins=0x93C00000;
+      A64Emit(cc,ins|(n<<16)|(s<<10)|(n<<5)|d);
+      break;
+  }
+}
+
+U0 A64PBitfield(CCmpCtrl *cc,U32 op,I64 form)
+{//form 0: xBFM d,n,immr,imms  1: xBFX d,n,lsb,width  2: BFI d,n,lsb,width
+  I64 d,n,k,a,b,size;
+  Bool sp;
+  U32 ins;
+  d=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  n=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  a=A64PImm(cc);
+  A64PComma(cc);
+  b=A64PImm(cc);
+  if (k==A64K_W)
+    size=32;
+  else
+    size=64;
+  switch (form) {
+    case 1:
+      b=a+b-1;
+      break;
+    case 2:
+      b=b-1;
+      a=(-a)&(size-1);
+      break;
+  }
+  ins=A64Sf(op,k);
+  if (k==A64K_W) ins&=~0x400000;
+  A64Emit(cc,ins|((a&63)<<16)|((b&63)<<10)|(n<<5)|d);
+}
+
+U0 A64PExtend(CCmpCtrl *cc,U32 op,I64 imms)
+{//UXTB UXTH SXTB SXTH SXTW
+  I64 d,n,kd,kn;
+  Bool sp;
+  U32 ins;
+  d=A64PGReg(cc,&kd,&sp);
+  A64PComma(cc);
+  n=A64PGReg(cc,&kn,&sp);
+  ins=A64Sf(op,kd);
+  if (kd==A64K_W) ins&=~0x400000;
+  A64Emit(cc,ins|(imms<<10)|(n<<5)|d);
+}
+
+U0 A64PRR(CCmpCtrl *cc,U32 op)
+{//op Rd,Rn
+  I64 d,n,k;
+  Bool sp;
+  d=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  n=A64PGReg(cc,&k,&sp);
+  A64Emit(cc,A64Sf(op,k)|(n<<5)|d);
+}
+
+U0 A64PRRR(CCmpCtrl *cc,U32 op,Bool has_ra=FALSE)
+{//op Rd,Rn,Rm{,Ra}
+  I64 d,n,m,a=A64_ZR,k;
+  Bool sp;
+  d=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  n=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  m=A64PGReg(cc,&k,&sp);
+  if (has_ra) {
+    A64PComma(cc);
+    a=A64PGReg(cc,&k,&sp);
+  }
+  A64Emit(cc,A64Sf(op,k)|(m<<16)|(a<<10)|(n<<5)|d);
+}
+
+U0 A64PCondSel(CCmpCtrl *cc,U32 op)
+{//CSEL CSINC CSINV CSNEG Rd,Rn,Rm,cond
+  I64 d,n,m,k,c;
+  Bool sp;
+  d=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  n=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  m=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  c=A64PCond(cc);
+  A64Emit(cc,A64Sf(op,k)|(m<<16)|(c<<12)|(n<<5)|d);
+}
+
+U0 A64PLdSt(CCmpCtrl *cc,U32 op_x,U32 op_w,U32 lit_x,U32 lit_w,Bool is_store,
+	Bool unscaled_only=FALSE)
+{/*op Rt,[Rn{,imm}]{!} | [Rn],imm | [Rn,Rm{,LSL s}] | label
+op_x/op_w are LDUR-style opcodes for X/W (or D/Q) registers. For byte/half
+and LDRSW forms op_w is used for both register kinds.*/
+  I64 t,n,m,k,kn,v,st,amt,scale;
+  Bool sp,pre=FALSE,post=FALSE,is_reg=FALSE;
+  U32 op;
+  t=A64PReg(cc,&k,&sp);
+  A64PComma(cc);
+  switch (k) {
+    case A64K_X: op=op_x; scale=3; break;
+    case A64K_W: op=op_w; scale=2; break;
+    case A64K_D: op=0xFC000000; scale=3; break;
+    case A64K_Q: op=0x3C800000; scale=4; break;
+  }
+  if (k>=A64K_D) {
+    if (!is_store) op|=0x400000;
+    lit_x=lit_w=0x5C000000;
+    if (k==A64K_Q) lit_x=lit_w=0x9C000000;
+  }
+  if (op_x==op_w && k<=A64K_W) //Byte/half/LDRSW: the size is in the opcode
+    scale=(op>>30)&3;
+  if (cc->token!='[') {//PC-relative literal
+    if (is_store || !lit_x)
+      LexExcept(cc,"Expecting '[' at ");
+    if (k==A64K_W)
+      A64EmitRel(cc,lit_w|t,IET_A64_B19);
+    else
+      A64EmitRel(cc,lit_x|t,IET_A64_B19);
+    return;
+  }
+  Lex(cc);
+  n=A64PReg(cc,&kn,&sp);
+  v=0;
+  if (A64TryComma(cc)) {
+    if (A64AtReg(cc)) {
+      m=A64PReg(cc,&kn,&sp);
+      is_reg=TRUE;
+      st=0;
+      amt=0;
+      if (A64TryComma(cc) && (!A64PShift(cc,&st,&amt) || st ||
+	    amt && amt!=scale))
+	LexExcept(cc,"Expecting LSL 0 or the access size shift at ");
+    } else
+      v=A64PImm(cc);
+  }
+  A64PChar(cc,']');
+  if (cc->token=='!') {
+    Lex(cc);
+    pre=TRUE;
+  } else if (!is_reg && A64TryComma(cc)) {
+    v=A64PImm(cc);
+    post=TRUE;
+  }
+  if (is_reg) {
+    op|=0x206800|(m<<16);
+    if (amt) op|=0x1000;
+    A64Emit(cc,op|(n<<5)|t);
+  } else if (pre || post) {
+    if (!(-256<=v<=255))
+      LexExcept(cc,"Pre/post index must be -256..255 at ");
+    if (pre)
+      op|=0xC00;
+    else
+      op|=0x400;
+    A64Emit(cc,op|((v&0x1FF)<<12)|(n<<5)|t);
+  } else if (!unscaled_only && v>=0 && !(v&((1<<scale)-1)) && (v>>scale)<4096)
+    A64Emit(cc,op|0x01000000|((v>>scale)<<10)|(n<<5)|t);
+  else if (-256<=v<=255)
+    A64Emit(cc,op|((v&0x1FF)<<12)|(n<<5)|t);
+  else
+    LexExcept(cc,"Offset out of range at ");
+}
+
+U0 A64PLdStPair(CCmpCtrl *cc,Bool is_load)
+{//LDP/STP Rt,Rt2,[Rn{,imm}]{!} | [Rn],imm
+  I64 t,t2,n,k,k2,v=0,scale;
+  Bool sp,pre=FALSE,post=FALSE;
+  U32 op;
+  t=A64PReg(cc,&k,&sp);
+  A64PComma(cc);
+  t2=A64PReg(cc,&k2,&sp);
+  A64PComma(cc);
+  switch (k) {
+    case A64K_X: op=0xA9000000; scale=3; break;
+    case A64K_W: op=0x29000000; scale=2; break;
+    case A64K_D: op=0x6D000000; scale=3; break;
+    case A64K_Q: op=0xAD000000; scale=4; break;
+  }
+  if (is_load) op|=0x400000;
+  A64PChar(cc,'[');
+  n=A64PReg(cc,&k2,&sp);
+  if (A64TryComma(cc))
+    v=A64PImm(cc);
+  A64PChar(cc,']');
+  if (cc->token=='!') {
+    Lex(cc);
+    pre=TRUE;
+  } else if (A64TryComma(cc)) {
+    v=A64PImm(cc);
+    post=TRUE;
+  }
+  if (v&((1<<scale)-1) || !(-64<=v>>scale<=63))
+    LexExcept(cc,"LDP/STP offset out of range or misaligned at ");
+  if (pre)
+    op|=0x800000;
+  else if (post)
+    op=op&~0x1000000|0x800000;
+  A64Emit(cc,op|(((v>>scale)&0x7F)<<15)|(t2<<10)|(n<<5)|t);
+}
+
+U0 A64PExcl(CCmpCtrl *cc,U32 op_x,U32 op_w,Bool has_status)
+{//LDXR LDAXR LDAR STXR STLXR STLR (byte forms pass op_x==op_w)
+  I64 s=A64_ZR,t,n,k,k2;
+  Bool sp;
+  U32 op;
+  if (has_status) {
+    s=A64PGReg(cc,&k,&sp);
+    A64PComma(cc);
+  }
+  t=A64PGReg(cc,&k,&sp);
+  A64PComma(cc);
+  A64PChar(cc,'[');
+  n=A64PReg(cc,&k2,&sp);
+  if (A64TryComma(cc) && A64PImm(cc))
+    LexExcept(cc,"Exclusive access takes no offset at ");
+  A64PChar(cc,']');
+  if (k==A64K_W)
+    op=op_w;
+  else
+    op=op_x;
+  if (has_status)
+    op|=s<<16;
+  A64Emit(cc,op|(n<<5)|t);
+}
+
+I64 A64PSysReg(CCmpCtrl *cc)
+{
+  I64 i;
+  U8 buf[STR_LEN],buf2[STR_LEN];
+  if (cc->token!=TK_IDENT)
+    LexExcept(cc,"Expecting system register at ");
+  A64Upper(buf,cc->cur_str,STR_LEN);
+  for (i=0;a64_sysreg_names[i];i++) {
+    A64Upper(buf2,a64_sysreg_names[i],STR_LEN);
+    if (!StrCmp(buf,buf2)) {
+      Lex(cc);
+      return a64_sysreg_codes[i];
+    }
+  }
+  LexExcept(cc,"Unknown system register at ");
+  return 0;
+}
+
+U0 A64PSys(CCmpCtrl *cc,I64 op1,I64 crn,I64 crm,I64 op2,Bool has_reg)
+{//SYS-style ops: DC IC TLBI
+  I64 t=A64_ZR,k;
+  Bool sp;
+  if (has_reg) {
+    A64PComma(cc);
+    t=A64PGReg(cc,&k,&sp);
+  }
+  A64Emit(cc,0xD5080000|(op1<<16)|(crn<<12)|(crm<<8)|(op2<<5)|t);
+}
+
+I64 A64PBarrier(CCmpCtrl *cc)
+{
+  if (A64IdentIs(cc,"SY"))    {Lex(cc); return 15;}
+  if (A64IdentIs(cc,"ST"))    {Lex(cc); return 14;}
+  if (A64IdentIs(cc,"LD"))    {Lex(cc); return 13;}
+  if (A64IdentIs(cc,"ISH"))   {Lex(cc); return 11;}
+  if (A64IdentIs(cc,"ISHST")) {Lex(cc); return 10;}
+  if (A64IdentIs(cc,"ISHLD")) {Lex(cc); return 9;}
+  if (A64IdentIs(cc,"NSH"))   {Lex(cc); return 7;}
+  if (A64IdentIs(cc,"NSHST")) {Lex(cc); return 6;}
+  if (A64IdentIs(cc,"OSH"))   {Lex(cc); return 3;}
+  if (A64IdentIs(cc,"OSHST")) {Lex(cc); return 2;}
+  return 15;
+}
+
+U0 A64PBranchCond(CCmpCtrl *cc,I64 cond)
+{
+  A64EmitRel(cc,0x54000000|cond,IET_A64_B19);
+}
+
+Bool PrsArm64Ins(CCmpCtrl *cc)
+{//Assemble one ARM64 instruction. FALSE if the token isn't a mnemonic.
+  U8 m[STR_LEN];
+  I64 d,n,k,v,c;
+  Bool sp;
+  if (cc->token!=TK_IDENT || StrLen(cc->cur_str)>=STR_LEN-1)
+    return FALSE;
+  A64Upper(m,cc->cur_str,STR_LEN);
+
+//Branches
+  if (!StrCmp(m,"B")) {
+    Lex(cc);
+    if (cc->token=='.') {
+      Lex(cc);
+      A64PBranchCond(cc,A64PCond(cc));
+    } else
+      A64EmitRel(cc,0x14000000,IET_A64_B26);
+    return TRUE;
+  }
+  if (!StrCmp(m,"BL"))  {Lex(cc); A64EmitRel(cc,0x94000000,IET_A64_B26); return TRUE;}
+  if (!StrCmp(m,"BR"))  {Lex(cc); A64Emit(cc,A64Br(A64PGReg(cc,&k)));  return TRUE;}
+  if (!StrCmp(m,"BLR")) {Lex(cc); A64Emit(cc,A64Blr(A64PGReg(cc,&k))); return TRUE;}
+  if (!StrCmp(m,"RET")) {
+    Lex(cc);
+    if (A64AtReg(cc))
+      A64Emit(cc,A64Ret(A64PGReg(cc,&k)));
+    else
+      A64Emit(cc,A64Ret);
+    return TRUE;
+  }
+  if (m[0]=='B' && StrLen(m)==3 && (c=A64CondStr(m+1))>=0) {//BEQ BNE ...
+    Lex(cc);
+    A64PBranchCond(cc,c);
+    return TRUE;
+  }
+  if (!StrCmp(m,"CBZ") || !StrCmp(m,"CBNZ")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    v=0x34000000;
+    if (m[2]=='N') v=0x35000000;
+    if (k==A64K_X) v|=0x80000000;
+    A64EmitRel(cc,v|d,IET_A64_B19);
+    return TRUE;
+  }
+  if (!StrCmp(m,"TBZ") || !StrCmp(m,"TBNZ")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    n=A64PImm(cc)&63;
+    A64PComma(cc);
+    v=0x36000000;
+    if (m[2]=='N') v=0x37000000;
+    A64EmitRel(cc,v|((n&32)<<26)|((n&31)<<19)|d,IET_A64_B14);
+    return TRUE;
+  }
+  if (!StrCmp(m,"ADR") || !StrCmp(m,"ADRP")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    if (m[3]=='P')
+      A64EmitRel(cc,0x90000000|d,IET_A64_ADRP);
+    else
+      A64EmitRel(cc,0x10000000|d,IET_A64_ADR21);
+    return TRUE;
+  }
+
+//Arithmetic and logic
+  if (!StrCmp(m,"ADD"))  {Lex(cc); A64PAddSub(cc,FALSE,FALSE,FALSE); return TRUE;}
+  if (!StrCmp(m,"ADDS")) {Lex(cc); A64PAddSub(cc,FALSE,TRUE,FALSE);  return TRUE;}
+  if (!StrCmp(m,"SUB"))  {Lex(cc); A64PAddSub(cc,TRUE,FALSE,FALSE);  return TRUE;}
+  if (!StrCmp(m,"SUBS")) {Lex(cc); A64PAddSub(cc,TRUE,TRUE,FALSE);   return TRUE;}
+  if (!StrCmp(m,"CMP"))  {Lex(cc); A64PAddSub(cc,TRUE,TRUE,TRUE);    return TRUE;}
+  if (!StrCmp(m,"CMN"))  {Lex(cc); A64PAddSub(cc,FALSE,TRUE,TRUE);   return TRUE;}
+  if (!StrCmp(m,"NEG")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    n=A64PGReg(cc,&k);
+    A64Emit(cc,A64Sf(0xCB000000,k)|(n<<16)|(A64_ZR<<5)|d);
+    return TRUE;
+  }
+  if (!StrCmp(m,"AND"))  {Lex(cc); A64PLogic(cc,0x8A000000,0x92000000,FALSE,FALSE); return TRUE;}
+  if (!StrCmp(m,"ANDS")) {Lex(cc); A64PLogic(cc,0xEA000000,0xF2000000,FALSE,FALSE); return TRUE;}
+  if (!StrCmp(m,"ORR"))  {Lex(cc); A64PLogic(cc,0xAA000000,0xB2000000,FALSE,FALSE); return TRUE;}
+  if (!StrCmp(m,"EOR"))  {Lex(cc); A64PLogic(cc,0xCA000000,0xD2000000,FALSE,FALSE); return TRUE;}
+  if (!StrCmp(m,"BIC"))  {Lex(cc); A64PLogic(cc,0x8A200000,0x92000000,FALSE,TRUE);  return TRUE;}
+  if (!StrCmp(m,"BICS")) {Lex(cc); A64PLogic(cc,0xEA200000,0xF2000000,FALSE,TRUE);  return TRUE;}
+  if (!StrCmp(m,"ORN"))  {Lex(cc); A64PLogic(cc,0xAA200000,0xB2000000,FALSE,TRUE);  return TRUE;}
+  if (!StrCmp(m,"EON"))  {Lex(cc); A64PLogic(cc,0xCA200000,0xD2000000,FALSE,TRUE);  return TRUE;}
+  if (!StrCmp(m,"TST"))  {Lex(cc); A64PLogic(cc,0xEA000000,0xF2000000,TRUE,FALSE);  return TRUE;}
+  if (!StrCmp(m,"MVN")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    n=A64PGReg(cc,&k);
+    A64Emit(cc,A64Sf(0xAA200000,k)|(n<<16)|(A64_ZR<<5)|d);
+    return TRUE;
+  }
+  if (!StrCmp(m,"MOV"))  {Lex(cc); A64PMov(cc); return TRUE;}
+  if (!StrCmp(m,"MOVZ")) {Lex(cc); A64PMovWide(cc,0xD2800000); return TRUE;}
+  if (!StrCmp(m,"MOVN")) {Lex(cc); A64PMovWide(cc,0x92800000); return TRUE;}
+  if (!StrCmp(m,"MOVK")) {Lex(cc); A64PMovWide(cc,0xF2800000); return TRUE;}
+  if (!StrCmp(m,"LSL"))  {Lex(cc); A64PShiftIns(cc,0); return TRUE;}
+  if (!StrCmp(m,"LSR"))  {Lex(cc); A64PShiftIns(cc,1); return TRUE;}
+  if (!StrCmp(m,"ASR"))  {Lex(cc); A64PShiftIns(cc,2); return TRUE;}
+  if (!StrCmp(m,"ROR"))  {Lex(cc); A64PShiftIns(cc,3); return TRUE;}
+  if (!StrCmp(m,"MUL"))  {Lex(cc); A64PRRR(cc,0x9B007C00); return TRUE;}
+  if (!StrCmp(m,"MADD")) {Lex(cc); A64PRRR(cc,0x9B000000,TRUE); return TRUE;}
+  if (!StrCmp(m,"MSUB")) {Lex(cc); A64PRRR(cc,0x9B008000,TRUE); return TRUE;}
+  if (!StrCmp(m,"UDIV")) {Lex(cc); A64PRRR(cc,0x9AC00800); return TRUE;}
+  if (!StrCmp(m,"SDIV")) {Lex(cc); A64PRRR(cc,0x9AC00C00); return TRUE;}
+  if (!StrCmp(m,"UMULH")){Lex(cc); A64PRRR(cc,0x9BC07C00); return TRUE;}
+  if (!StrCmp(m,"SMULH")){Lex(cc); A64PRRR(cc,0x9B407C00); return TRUE;}
+  if (!StrCmp(m,"UBFM")) {Lex(cc); A64PBitfield(cc,0xD3400000,0); return TRUE;}
+  if (!StrCmp(m,"SBFM")) {Lex(cc); A64PBitfield(cc,0x93400000,0); return TRUE;}
+  if (!StrCmp(m,"BFM"))  {Lex(cc); A64PBitfield(cc,0xB3400000,0); return TRUE;}
+  if (!StrCmp(m,"UBFX")) {Lex(cc); A64PBitfield(cc,0xD3400000,1); return TRUE;}
+  if (!StrCmp(m,"SBFX")) {Lex(cc); A64PBitfield(cc,0x93400000,1); return TRUE;}
+  if (!StrCmp(m,"BFI"))  {Lex(cc); A64PBitfield(cc,0xB3400000,2); return TRUE;}
+  if (!StrCmp(m,"UXTB")) {Lex(cc); A64PExtend(cc,0xD3400000,7);  return TRUE;}
+  if (!StrCmp(m,"UXTH")) {Lex(cc); A64PExtend(cc,0xD3400000,15); return TRUE;}
+  if (!StrCmp(m,"SXTB")) {Lex(cc); A64PExtend(cc,0x93400000,7);  return TRUE;}
+  if (!StrCmp(m,"SXTH")) {Lex(cc); A64PExtend(cc,0x93400000,15); return TRUE;}
+  if (!StrCmp(m,"SXTW")) {Lex(cc); A64PExtend(cc,0x93400000,31); return TRUE;}
+  if (!StrCmp(m,"CLZ"))  {Lex(cc); A64PRR(cc,0xDAC01000); return TRUE;}
+  if (!StrCmp(m,"RBIT")) {Lex(cc); A64PRR(cc,0xDAC00000); return TRUE;}
+  if (!StrCmp(m,"REV"))  {Lex(cc); A64PRR(cc,0xDAC00C00); return TRUE;}
+  if (!StrCmp(m,"CSEL"))  {Lex(cc); A64PCondSel(cc,0x9A800000); return TRUE;}
+  if (!StrCmp(m,"CSINC")) {Lex(cc); A64PCondSel(cc,0x9A800400); return TRUE;}
+  if (!StrCmp(m,"CSINV")) {Lex(cc); A64PCondSel(cc,0xDA800000); return TRUE;}
+  if (!StrCmp(m,"CSNEG")) {Lex(cc); A64PCondSel(cc,0xDA800400); return TRUE;}
+  if (!StrCmp(m,"CSET") || !StrCmp(m,"CSETM")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    c=A64PCond(cc)^1;
+    if (m[4]=='M')
+      v=0xDA800000;
+    else
+      v=0x9A800400;
+    A64Emit(cc,A64Sf(v,k)|(A64_ZR<<16)|(c<<12)|(A64_ZR<<5)|d);
+    return TRUE;
+  }
+  if (!StrCmp(m,"CINC")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    n=A64PGReg(cc,&k);
+    A64PComma(cc);
+    c=A64PCond(cc)^1;
+    A64Emit(cc,A64Sf(0x9A800400,k)|(n<<16)|(c<<12)|(n<<5)|d);
+    return TRUE;
+  }
+
+//Loads and stores
+  if (!StrCmp(m,"LDR"))   {Lex(cc); A64PLdSt(cc,0xF8400000,0xB8400000,0x58000000,0x18000000,FALSE); return TRUE;}
+  if (!StrCmp(m,"STR"))   {Lex(cc); A64PLdSt(cc,0xF8000000,0xB8000000,0,0,TRUE); return TRUE;}
+  if (!StrCmp(m,"LDUR"))  {Lex(cc); A64PLdSt(cc,0xF8400000,0xB8400000,0,0,FALSE,TRUE); return TRUE;}
+  if (!StrCmp(m,"STUR"))  {Lex(cc); A64PLdSt(cc,0xF8000000,0xB8000000,0,0,TRUE,TRUE); return TRUE;}
+  if (!StrCmp(m,"LDRB"))  {Lex(cc); A64PLdSt(cc,0x38400000,0x38400000,0,0,FALSE); return TRUE;}
+  if (!StrCmp(m,"STRB"))  {Lex(cc); A64PLdSt(cc,0x38000000,0x38000000,0,0,TRUE);  return TRUE;}
+  if (!StrCmp(m,"LDRH"))  {Lex(cc); A64PLdSt(cc,0x78400000,0x78400000,0,0,FALSE); return TRUE;}
+  if (!StrCmp(m,"STRH"))  {Lex(cc); A64PLdSt(cc,0x78000000,0x78000000,0,0,TRUE);  return TRUE;}
+  if (!StrCmp(m,"LDRSB")) {Lex(cc); A64PLdSt(cc,0x38800000,0x38800000,0,0,FALSE); return TRUE;}
+  if (!StrCmp(m,"LDRSH")) {Lex(cc); A64PLdSt(cc,0x78800000,0x78800000,0,0,FALSE); return TRUE;}
+  if (!StrCmp(m,"LDRSW")) {Lex(cc); A64PLdSt(cc,0xB8800000,0xB8800000,0x98000000,0x98000000,FALSE); return TRUE;}
+  if (!StrCmp(m,"LDP"))   {Lex(cc); A64PLdStPair(cc,TRUE);  return TRUE;}
+  if (!StrCmp(m,"STP"))   {Lex(cc); A64PLdStPair(cc,FALSE); return TRUE;}
+  if (!StrCmp(m,"LDXR"))  {Lex(cc); A64PExcl(cc,0xC85F7C00,0x885F7C00,FALSE); return TRUE;}
+  if (!StrCmp(m,"LDAXR")) {Lex(cc); A64PExcl(cc,0xC85FFC00,0x885FFC00,FALSE); return TRUE;}
+  if (!StrCmp(m,"LDAR"))  {Lex(cc); A64PExcl(cc,0xC8DFFC00,0x88DFFC00,FALSE); return TRUE;}
+  if (!StrCmp(m,"STXR"))  {Lex(cc); A64PExcl(cc,0xC8007C00,0x88007C00,TRUE);  return TRUE;}
+  if (!StrCmp(m,"STLXR")) {Lex(cc); A64PExcl(cc,0xC800FC00,0x8800FC00,TRUE);  return TRUE;}
+  if (!StrCmp(m,"STLR"))  {Lex(cc); A64PExcl(cc,0xC89FFC00,0x889FFC00,FALSE); return TRUE;}
+  if (!StrCmp(m,"LDAXRB")){Lex(cc); A64PExcl(cc,0x085FFC00,0x085FFC00,FALSE); return TRUE;}
+  if (!StrCmp(m,"STLXRB")){Lex(cc); A64PExcl(cc,0x0800FC00,0x0800FC00,TRUE);  return TRUE;}
+  if (!StrCmp(m,"LDAXRH")){Lex(cc); A64PExcl(cc,0x485FFC00,0x485FFC00,FALSE); return TRUE;}
+  if (!StrCmp(m,"STLXRH")){Lex(cc); A64PExcl(cc,0x4800FC00,0x4800FC00,TRUE);  return TRUE;}
+
+//System
+  if (!StrCmp(m,"MRS")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    A64Emit(cc,A64Mrs(d,A64PSysReg(cc)));
+    return TRUE;
+  }
+  if (!StrCmp(m,"MSR")) {
+    Lex(cc);
+    if (A64IdentIs(cc,"DAIFSET") || A64IdentIs(cc,"DAIFCLR") ||
+	  A64IdentIs(cc,"SPSEL")) {
+      if (A64IdentIs(cc,"DAIFSET"))
+	v=0xD50340DF;
+      else if (A64IdentIs(cc,"DAIFCLR"))
+	v=0xD50340FF;
+      else
+	v=0xD50040BF;
+      Lex(cc);
+      A64PComma(cc);
+      if (A64AtReg(cc) && v==0xD50040BF) {//MSR SPSel,Xt
+	A64Emit(cc,A64Msr(0x30420,A64PGReg(cc,&k)));
+	return TRUE;
+      }
+      A64Emit(cc,v|((A64PImm(cc)&15)<<8));
+      return TRUE;
+    }
+    v=A64PSysReg(cc);
+    A64PComma(cc);
+    A64Emit(cc,A64Msr(v,A64PGReg(cc,&k)));
+    return TRUE;
+  }
+  if (!StrCmp(m,"DC")) {
+    Lex(cc);
+    if (A64IdentIs(cc,"CIVAC"))     {Lex(cc); A64PSys(cc,3,7,14,1,TRUE);}
+    else if (A64IdentIs(cc,"CVAC")) {Lex(cc); A64PSys(cc,3,7,10,1,TRUE);}
+    else if (A64IdentIs(cc,"CVAU")) {Lex(cc); A64PSys(cc,3,7,11,1,TRUE);}
+    else if (A64IdentIs(cc,"IVAC")) {Lex(cc); A64PSys(cc,0,7,6,1,TRUE);}
+    else if (A64IdentIs(cc,"ZVA"))  {Lex(cc); A64PSys(cc,3,7,4,1,TRUE);}
+    else LexExcept(cc,"Unknown DC op at ");
+    return TRUE;
+  }
+  if (!StrCmp(m,"IC")) {
+    Lex(cc);
+    if (A64IdentIs(cc,"IALLU"))        {Lex(cc); A64PSys(cc,0,7,5,0,FALSE);}
+    else if (A64IdentIs(cc,"IALLUIS")) {Lex(cc); A64PSys(cc,0,7,1,0,FALSE);}
+    else if (A64IdentIs(cc,"IVAU"))    {Lex(cc); A64PSys(cc,3,7,5,1,TRUE);}
+    else LexExcept(cc,"Unknown IC op at ");
+    return TRUE;
+  }
+  if (!StrCmp(m,"TLBI")) {
+    Lex(cc);
+    if (A64IdentIs(cc,"VMALLE1"))        {Lex(cc); A64PSys(cc,0,8,7,0,FALSE);}
+    else if (A64IdentIs(cc,"VMALLE1IS")) {Lex(cc); A64PSys(cc,0,8,3,0,FALSE);}
+    else if (A64IdentIs(cc,"VAE1"))      {Lex(cc); A64PSys(cc,0,8,7,1,TRUE);}
+    else if (A64IdentIs(cc,"VAE1IS"))    {Lex(cc); A64PSys(cc,0,8,3,1,TRUE);}
+    else if (A64IdentIs(cc,"VAAE1"))     {Lex(cc); A64PSys(cc,0,8,7,3,TRUE);}
+    else if (A64IdentIs(cc,"VAAE1IS"))   {Lex(cc); A64PSys(cc,0,8,3,3,TRUE);}
+    else if (A64IdentIs(cc,"ALLE2"))     {Lex(cc); A64PSys(cc,4,8,7,0,FALSE);}
+    else LexExcept(cc,"Unknown TLBI op at ");
+    return TRUE;
+  }
+  if (!StrCmp(m,"NOP"))   {Lex(cc); A64Emit(cc,0xD503201F); return TRUE;}
+  if (!StrCmp(m,"YIELD")) {Lex(cc); A64Emit(cc,0xD503203F); return TRUE;}
+  if (!StrCmp(m,"WFE"))   {Lex(cc); A64Emit(cc,0xD503205F); return TRUE;}
+  if (!StrCmp(m,"WFI"))   {Lex(cc); A64Emit(cc,0xD503207F); return TRUE;}
+  if (!StrCmp(m,"SEV"))   {Lex(cc); A64Emit(cc,0xD503209F); return TRUE;}
+  if (!StrCmp(m,"SEVL"))  {Lex(cc); A64Emit(cc,0xD50320BF); return TRUE;}
+  if (!StrCmp(m,"ISB"))   {Lex(cc); if (A64IdentIs(cc,"SY")) Lex(cc); A64Emit(cc,0xD5033FDF); return TRUE;}
+  if (!StrCmp(m,"DSB"))   {Lex(cc); A64Emit(cc,0xD503309F|(A64PBarrier(cc)<<8)); return TRUE;}
+  if (!StrCmp(m,"DMB"))   {Lex(cc); A64Emit(cc,0xD50330BF|(A64PBarrier(cc)<<8)); return TRUE;}
+  if (!StrCmp(m,"ERET"))  {Lex(cc); A64Emit(cc,0xD69F03E0); return TRUE;}
+  if (!StrCmp(m,"SVC"))   {Lex(cc); A64Emit(cc,0xD4000001|((A64PImm(cc)&0xFFFF)<<5)); return TRUE;}
+  if (!StrCmp(m,"HVC"))   {Lex(cc); A64Emit(cc,0xD4000002|((A64PImm(cc)&0xFFFF)<<5)); return TRUE;}
+  if (!StrCmp(m,"SMC"))   {Lex(cc); A64Emit(cc,0xD4000003|((A64PImm(cc)&0xFFFF)<<5)); return TRUE;}
+  if (!StrCmp(m,"BRK"))   {Lex(cc); A64Emit(cc,0xD4200000|((A64PImm(cc)&0xFFFF)<<5)); return TRUE;}
+
+//FP arithmetic (double precision)
+  v=0;
+  if (!StrCmp(m,"FADD")) v=0x1E602800;
+  else if (!StrCmp(m,"FSUB")) v=0x1E603800;
+  else if (!StrCmp(m,"FMUL")) v=0x1E600800;
+  else if (!StrCmp(m,"FDIV")) v=0x1E601800;
+  else if (!StrCmp(m,"FMAX")) v=0x1E604800;
+  else if (!StrCmp(m,"FMIN")) v=0x1E605800;
+  if (v) {
+    Lex(cc);
+    d=A64PReg(cc,&k);
+    A64PComma(cc);
+    n=A64PReg(cc,&k);
+    A64PComma(cc);
+    c=A64PReg(cc,&k);
+    if (k!=A64K_D)
+      LexExcept(cc,"Expecting D registers at ");
+    A64Emit(cc,v|(c<<16)|(n<<5)|d);
+    return TRUE;
+  }
+  if (!StrCmp(m,"FSQRT")) v=0x1E61C000;
+  else if (!StrCmp(m,"FABS")) v=0x1E60C000;
+  else if (!StrCmp(m,"FNEG")) v=0x1E614000;
+  else if (!StrCmp(m,"FRINTN")) v=0x1E644000;
+  else if (!StrCmp(m,"FRINTP")) v=0x1E64C000;
+  else if (!StrCmp(m,"FRINTM")) v=0x1E654000;
+  else if (!StrCmp(m,"FRINTZ")) v=0x1E65C000;
+  else if (!StrCmp(m,"FRINTA")) v=0x1E664000;
+  else if (!StrCmp(m,"FRINTX")) v=0x1E674000;
+  if (v) {
+    Lex(cc);
+    d=A64PReg(cc,&k);
+    A64PComma(cc);
+    n=A64PReg(cc,&k);
+    if (k!=A64K_D)
+      LexExcept(cc,"Expecting D registers at ");
+    A64Emit(cc,v|(n<<5)|d);
+    return TRUE;
+  }
+  if (!StrCmp(m,"FCMP")) {//FCMP Dn,Dm or FCMP Dn,0
+    Lex(cc);
+    n=A64PReg(cc,&k);
+    A64PComma(cc);
+    if (A64AtReg(cc))
+      A64Emit(cc,A64Fcmp(n,A64PReg(cc,&k)));
+    else if (A64PImm(cc))
+      LexExcept(cc,"FCMP compares with a register or 0 at ");
+    else
+      A64Emit(cc,0x1E602008|(n<<5));
+    return TRUE;
+  }
+  if (!StrCmp(m,"SCVTF") || !StrCmp(m,"UCVTF")) {
+    Lex(cc);
+    d=A64PReg(cc,&k);
+    A64PComma(cc);
+    n=A64PGReg(cc,&k);
+    if (m[0]=='S')
+      A64Emit(cc,A64Scvtf(d,n));
+    else
+      A64Emit(cc,A64Ucvtf(d,n));
+    return TRUE;
+  }
+  if (!StrCmp(m,"FCVTZS")) {
+    Lex(cc);
+    d=A64PGReg(cc,&k);
+    A64PComma(cc);
+    n=A64PReg(cc,&k);
+    A64Emit(cc,A64Fcvtzs(d,n));
+    return TRUE;
+  }
+
+//FP moves
+  if (!StrCmp(m,"FMOV")) {
+    Lex(cc);
+    d=A64PReg(cc,&k,&sp);
+    A64PComma(cc);
+    n=A64PReg(cc,&c,&sp);
+    if (k==A64K_D && c==A64K_X)
+      A64Emit(cc,A64FmovDX(d,n));
+    else if (k==A64K_X && c==A64K_D)
+      A64Emit(cc,A64FmovXD(d,n));
+    else if (k==A64K_D && c==A64K_D)
+      A64Emit(cc,0x1E604000|(n<<5)|d);
+    else
+      LexExcept(cc,"FMOV supports Dd,Xn  Xd,Dn  Dd,Dn at ");
+    return TRUE;
+  }
+  return FALSE;
+}
+#exe {Option(OPTf_WARN_PAREN,ON);};

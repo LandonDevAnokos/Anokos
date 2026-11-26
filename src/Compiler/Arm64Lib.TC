@@ -1,0 +1,582 @@
+#exe {Option(OPTf_WARN_PAREN,OFF);};
+//AArch64 (ARM64) instruction encoders, shared by the ARM64
+//code generator ($LK,"BackArm64",A="FI:::/Compiler/BackArm64.TC"$) and the ARM64
+//assembler ($LK,"AsmArm64",A="FI:::/Compiler/AsmArm64.TC"$).
+
+//NOTE: TerryC precedence is not C's: shifts bind tighter than '*',
+//and '&','^','|' bind tighter than '+' and '-'. Everything mixed below
+//is parenthesized on purpose.
+
+//AArch64 register numbers. 31 is SP or XZR depending on the instruction.
+#define A64_SP		31
+#define A64_ZR		31
+#define A64_FP		29
+#define A64_LR		30
+#define A64_IP0		16 //Scratch: addresses
+#define A64_IP1		17 //Scratch: addresses, big offsets
+#define A64_T0		19 //Scratch: arg1
+#define A64_T1		20 //Scratch: arg2
+#define A64_T2		21 //Scratch: result
+#define A64_T3		22 //Scratch
+
+//Condition codes
+#define A64C_EQ		0
+#define A64C_NE		1
+#define A64C_HS		2
+#define A64C_LO		3
+#define A64C_MI		4
+#define A64C_PL		5
+#define A64C_VS		6
+#define A64C_VC		7
+#define A64C_HI		8
+#define A64C_LS		9
+#define A64C_GE		10
+#define A64C_LT		11
+#define A64C_GT		12
+#define A64C_LE		13
+#define A64C_AL		14
+
+//Load/store size+sign classes, indexed by raw type (see $LK,"RT_I8",A="MN:RT_I8"$).
+//Each is the "unscaled immediate" (LDUR/STUR family) opcode.
+#define A64LS_STRB	0x38000000
+#define A64LS_LDRB	0x38400000
+#define A64LS_LDRSB	0x38800000
+#define A64LS_STRH	0x78000000
+#define A64LS_LDRH	0x78400000
+#define A64LS_LDRSH	0x78800000
+#define A64LS_STRW	0xB8000000
+#define A64LS_LDRW	0xB8400000
+#define A64LS_LDRSW	0xB8800000
+#define A64LS_STRX	0xF8000000
+#define A64LS_LDRX	0xF8400000
+
+I64 A64Reg(I64 r)
+{//TerryC/x86 register number to AArch64 register number.
+//The optimizer works with x86 register numbers. On ARM64 they map 1:1
+//onto X0-X15, except RSP->SP and RBP->X29 (the frame pointer).
+  if (r==REG_RSP) return A64_SP;
+  if (r==REG_RBP) return A64_FP;
+  return r&15;
+}
+
+I64 A64LoadOp(I64 raw_type)
+{
+  switch (raw_type) {
+    case RT_I8:  return A64LS_LDRSB;
+    case RT_U8:  return A64LS_LDRB;
+    case RT_I16: return A64LS_LDRSH;
+    case RT_U16: return A64LS_LDRH;
+    case RT_I32: return A64LS_LDRSW;
+    case RT_U32: return A64LS_LDRW;
+  }
+  return A64LS_LDRX;
+}
+
+I64 A64StoreOp(I64 raw_type)
+{
+  switch (raw_type) {
+    case RT_I8:
+    case RT_U8:  return A64LS_STRB;
+    case RT_I16:
+    case RT_U16: return A64LS_STRH;
+    case RT_I32:
+    case RT_U32: return A64LS_STRW;
+  }
+  return A64LS_STRX;
+}
+
+I64 A64LSSize(I64 op)
+{//log2 of the access size of a load/store opcode.
+  return (op>>30)&3;
+}
+
+I64 A64LSImm(I64 op,I64 t,I64 n,I64 d)
+{//op t,[n,d] with an offset the instruction can hold, or -1.
+  I64 sz=A64LSSize(op);
+  if (d>=0 && !(d&((1<<sz)-1)) && (d>>sz)<4096) //Scaled unsigned 12 bit
+    return op|0x01000000|((d>>sz)<<10)|(n<<5)|t;
+  if (-256<=d<=255) //Unscaled signed 9 bit
+    return op|((d&0x1FF)<<12)|(n<<5)|t;
+  return -1;
+}
+
+U32 A64LSReg(I64 op,I64 t,I64 n,I64 m)
+{//op t,[n,m]
+  return op|0x00206800|(m<<16)|(n<<5)|t;
+}
+
+U32 A64LSPre(I64 op,I64 t,I64 n,I64 d)
+{//op t,[n,d]!	(d in -256..255)
+  return op|0xC00|((d&0x1FF)<<12)|(n<<5)|t;
+}
+
+U32 A64LSPost(I64 op,I64 t,I64 n,I64 d)
+{//op t,[n],d	(d in -256..255)
+  return op|0x400|((d&0x1FF)<<12)|(n<<5)|t;
+}
+
+U32 A64AddImm(I64 d,I64 n,I64 imm12,Bool sub=FALSE,Bool shift12=FALSE)
+{//ADD/SUB d,n,imm12{,LSL 12}. d and n may be SP.
+  U32 res=0x91000000;
+  if (sub) res=0xD1000000;
+  if (shift12) res|=0x400000;
+  return res|((imm12&0xFFF)<<10)|(n<<5)|d;
+}
+
+U32 A64AddExt(I64 d,I64 n,I64 m,Bool sub=FALSE)
+{//ADD/SUB d,n,m,UXTX. d and n may be SP, m may not.
+  U32 res=0x8B206000;
+  if (sub) res=0xCB206000;
+  return res|(m<<16)|(n<<5)|d;
+}
+
+U32 A64Alu(U32 op,I64 d,I64 n,I64 m,I64 lsl=0)
+{//Shifted register ALU forms: op d,n,m,LSL lsl. No SP.
+  return op|(m<<16)|((lsl&63)<<10)|(n<<5)|d;
+}
+#define A64OP_ADD	0x8B000000
+#define A64OP_SUB	0xCB000000
+#define A64OP_AND	0x8A000000
+#define A64OP_ORR	0xAA000000
+#define A64OP_EOR	0xCA000000
+#define A64OP_ORN	0xAA200000
+#define A64OP_BIC	0x8A200000
+#define A64OP_ADDS	0xAB000000
+#define A64OP_SUBS	0xEB000000
+#define A64OP_ANDS	0xEA000000
+
+#define A64OP_LSLV	0x9AC02000
+#define A64OP_LSRV	0x9AC02400
+#define A64OP_ASRV	0x9AC02800
+#define A64OP_RORV	0x9AC02C00
+#define A64OP_UDIV	0x9AC00800
+#define A64OP_SDIV	0x9AC00C00
+
+U32 A64DP2(U32 op,I64 d,I64 n,I64 m)
+{//Two-source data processing: LSLV LSRV ASRV RORV UDIV SDIV
+  return op|(m<<16)|(n<<5)|d;
+}
+
+U32 A64Madd(I64 d,I64 n,I64 m,I64 a,Bool sub=FALSE)
+{//d=a+n*m (or a-n*m)
+  U32 res=0x9B000000;
+  if (sub) res|=0x8000;
+  return res|(m<<16)|(a<<10)|(n<<5)|d;
+}
+
+U32 A64Umulh(I64 d,I64 n,I64 m,Bool is_signed=FALSE)
+{
+  U32 res=0x9BC07C00;
+  if (is_signed) res=0x9B407C00;
+  return res|(m<<16)|(n<<5)|d;
+}
+
+U32 A64Bfm(U32 op,I64 d,I64 n,I64 immr,I64 imms)
+{//SBFM 0x93400000 BFM 0xB3400000 UBFM 0xD3400000
+  return op|((immr&63)<<16)|((imms&63)<<10)|(n<<5)|d;
+}
+#define A64OP_SBFM	0x93400000
+#define A64OP_BFM	0xB3400000
+#define A64OP_UBFM	0xD3400000
+
+U32 A64LslImm(I64 d,I64 n,I64 s)
+{
+  s&=63;
+  return A64Bfm(A64OP_UBFM,d,n,(64-s)&63,63-s);
+}
+
+U32 A64LsrImm(I64 d,I64 n,I64 s)
+{
+  return A64Bfm(A64OP_UBFM,d,n,s&63,63);
+}
+
+U32 A64AsrImm(I64 d,I64 n,I64 s)
+{
+  return A64Bfm(A64OP_SBFM,d,n,s&63,63);
+}
+
+U32 A64Movz(I64 d,I64 imm16,I64 hw=0)
+{
+  return 0xD2800000|((hw&3)<<21)|((imm16&0xFFFF)<<5)|d;
+}
+
+U32 A64Movn(I64 d,I64 imm16,I64 hw=0)
+{
+  return 0x92800000|((hw&3)<<21)|((imm16&0xFFFF)<<5)|d;
+}
+
+U32 A64Movk(I64 d,I64 imm16,I64 hw=0)
+{
+  return 0xF2800000|((hw&3)<<21)|((imm16&0xFFFF)<<5)|d;
+}
+
+U32 A64MovReg(I64 d,I64 n)
+{//MOV d,n. Either may be SP (uses ADD #0), otherwise ORR d,XZR,n.
+  if (d==A64_SP || n==A64_SP)
+    return A64AddImm(d,n,0);
+  return A64Alu(A64OP_ORR,d,A64_ZR,n);
+}
+
+U32 A64Cset(I64 d,I64 cond)
+{//CSINC d,XZR,XZR,!cond
+  return 0x9A9F07E0|((cond^1)<<12)|d;
+}
+
+U32 A64Csel(I64 d,I64 n,I64 m,I64 cond)
+{
+  return 0x9A800000|(m<<16)|(cond<<12)|(n<<5)|d;
+}
+
+U32 A64Csneg(I64 d,I64 n,I64 m,I64 cond)
+{
+  return 0xDA800400|(m<<16)|(cond<<12)|(n<<5)|d;
+}
+
+U32 A64CmpImm(I64 n,I64 imm12)
+{//SUBS XZR,n,imm12 (n may be SP)
+  return 0xF1000000|((imm12&0xFFF)<<10)|(n<<5)|A64_ZR;
+}
+
+U32 A64CmnImm(I64 n,I64 imm12)
+{//ADDS XZR,n,imm12
+  return 0xB1000000|((imm12&0xFFF)<<10)|(n<<5)|A64_ZR;
+}
+
+U32 A64Cmp(I64 n,I64 m)
+{
+  return A64Alu(A64OP_SUBS,A64_ZR,n,m);
+}
+
+U32 A64Tst(I64 n,I64 m)
+{
+  return A64Alu(A64OP_ANDS,A64_ZR,n,m);
+}
+
+//Branches. Offsets are byte offsets from the branch instruction.
+U32 A64B(I64 off)
+{
+  return 0x14000000|((off>>2)&0x3FFFFFF);
+}
+
+U32 A64Bl(I64 off)
+{
+  return 0x94000000|((off>>2)&0x3FFFFFF);
+}
+
+U32 A64Bcond(I64 cond,I64 off)
+{
+  return 0x54000000|(((off>>2)&0x7FFFF)<<5)|cond;
+}
+
+U32 A64Cbz(I64 t,I64 off,Bool nz=FALSE)
+{
+  U32 res=0xB4000000;
+  if (nz) res=0xB5000000;
+  return res|(((off>>2)&0x7FFFF)<<5)|t;
+}
+
+U32 A64Tbz(I64 t,I64 bit,I64 off,Bool nz=FALSE)
+{
+  U32 res=0x36000000;
+  if (nz) res=0x37000000;
+  return res|((bit&32)<<26)|((bit&31)<<19)|(((off>>2)&0x3FFF)<<5)|t;
+}
+
+U32 A64Br(I64 n)  {return 0xD61F0000|(n<<5);}
+U32 A64Blr(I64 n) {return 0xD63F0000|(n<<5);}
+U32 A64Ret(I64 n=A64_LR) {return 0xD65F0000|(n<<5);}
+
+U32 A64Adr(I64 d,I64 off)
+{
+  return 0x10000000|((off&3)<<29)|(((off>>2)&0x7FFFF)<<5)|d;
+}
+
+U32 A64Adrp(I64 d,I64 page_off)
+{//page_off is in 4 KiB pages
+  return 0x90000000|((page_off&3)<<29)|(((page_off>>2)&0x7FFFF)<<5)|d;
+}
+
+U32 A64Sys(I64 is_read,I64 op0,I64 op1,I64 crn,I64 crm,I64 op2,I64 t)
+{//MRS (is_read) / MSR (register)
+  U32 res=0xD5000000;
+  if (is_read) res=0xD5200000;
+  return res|((op0&3)<<19)|((op1&7)<<16)|((crn&15)<<12)|
+	((crm&15)<<8)|((op2&7)<<5)|t;
+}
+
+//System register encodings: op0<<16+op1<<12+crn<<8+crm<<4+op2
+#define A64SR_NZCV		0x33420
+#define A64SR_DAIF		0x33421
+#define A64SR_TPIDR_EL0		0x33D02
+#define A64SR_TPIDRRO_EL0	0x33D03
+#define A64SR_TPIDR_EL1		0x30D04
+#define A64SR_CNTVCT_EL0	0x33E02
+#define A64SR_CNTFRQ_EL0	0x33E00
+
+U32 A64Mrs(I64 t,I64 sr)
+{
+  return A64Sys(TRUE,(sr>>16)&3,(sr>>12)&7,(sr>>8)&15,(sr>>4)&15,sr&7,t);
+}
+
+U32 A64Msr(I64 sr,I64 t)
+{
+  return A64Sys(FALSE,(sr>>16)&3,(sr>>12)&7,(sr>>8)&15,(sr>>4)&15,sr&7,t);
+}
+
+#define A64_NOP		0xD503201F
+#define A64_ISB		0xD5033FDF
+#define A64_DSB_SY	0xD5033F9F
+#define A64_DSB_ISH	0xD5033B9F
+#define A64_DMB_ISH	0xD5033BBF
+
+//Floating point (double precision, d0-d31)
+U32 A64FmovDX(I64 d,I64 n) {return 0x9E670000|(n<<5)|d;} //FMOV Dd,Xn
+U32 A64FmovXD(I64 d,I64 n) {return 0x9E660000|(n<<5)|d;} //FMOV Xd,Dn
+U32 A64Fop2(U32 op,I64 d,I64 n,I64 m) {return op|(m<<16)|(n<<5)|d;}
+#define A64OP_FMUL	0x1E600800
+#define A64OP_FDIV	0x1E601800
+#define A64OP_FADD	0x1E602800
+#define A64OP_FSUB	0x1E603800
+U32 A64Fop1(U32 op,I64 d,I64 n) {return op|(n<<5)|d;}
+#define A64OP_FABS	0x1E60C000
+#define A64OP_FNEG	0x1E614000
+#define A64OP_FSQRT	0x1E61C000
+U32 A64Fcmp(I64 n,I64 m)   {return 0x1E602000|(m<<16)|(n<<5);}
+U32 A64Scvtf(I64 d,I64 n)  {return 0x9E620000|(n<<5)|d;}
+U32 A64Ucvtf(I64 d,I64 n)  {return 0x9E630000|(n<<5)|d;}
+U32 A64Fcvtzs(I64 d,I64 n) {return 0x9E780000|(n<<5)|d;}
+
+U32 A64Clz(I64 d,I64 n)  {return 0xDAC01000|(n<<5)|d;}
+U32 A64Rbit(I64 d,I64 n) {return 0xDAC00000|(n<<5)|d;}
+U32 A64Rev(I64 d,I64 n)  {return 0xDAC00C00|(n<<5)|d;}
+
+//Exclusive byte access, for the locked bit ops (LBts etc).
+U32 A64Ldaxrb(I64 t,I64 n)	{return 0x085FFC00|(n<<5)|t;}
+U32 A64Stlxrb(I64 s,I64 t,I64 n){return 0x0800FC00|(s<<16)|(n<<5)|t;}
+
+I64 A64ImmCnt(I64 v)
+{//Number of instructions A64MovImm uses for v.
+  I64 i,zeros=0,ones=0;
+  for (i=0;i<4;i++) {
+    if (!((v>>(i*16))&0xFFFF)) zeros++;
+    if (((v>>(i*16))&0xFFFF)==0xFFFF) ones++;
+  }
+  if (zeros==4 || ones==4) return 1;
+  if (ones>zeros) return 4-ones;
+  return 4-zeros;
+}
+
+I64 A64MovImm(U32 *buf,I64 d,I64 v)
+{//Writes the MOVZ/MOVN/MOVK sequence for d=v into buf. Returns count.
+  I64 i,c,cnt=0,zeros=0,ones=0;
+  Bool first=TRUE,inv;
+  for (i=0;i<4;i++) {
+    if (!((v>>(i*16))&0xFFFF)) zeros++;
+    if (((v>>(i*16))&0xFFFF)==0xFFFF) ones++;
+  }
+  if (zeros==4) {
+    buf[0]=A64Movz(d,0);
+    return 1;
+  }
+  if (ones==4) {
+    buf[0]=A64Movn(d,0);
+    return 1;
+  }
+  inv=ones>zeros;
+  for (i=0;i<4;i++) {
+    c=(v>>(i*16))&0xFFFF;
+    if (inv && c!=0xFFFF) {
+      if (first)
+	buf[cnt++]=A64Movn(d,(~c)&0xFFFF,i);
+      else
+	buf[cnt++]=A64Movk(d,c,i);
+      first=FALSE;
+    } else if (!inv && c) {
+      if (first)
+	buf[cnt++]=A64Movz(d,c,i);
+      else
+	buf[cnt++]=A64Movk(d,c,i);
+      first=FALSE;
+    }
+  }
+  return cnt;
+}
+
+U32 A64AOTRead32(CCmpCtrl *cc,I64 rip)
+{//Read back an instruction word already stored in the AOT output.
+  CAOTBinBlk *tmpbin;
+  I64 i,j;
+  U32 res=0;
+  for (j=0;j<4;j++) {
+    i=(rip+j)>>AOT_BIN_BLK_BITS;
+    tmpbin=cc->aotc->bin;
+    while (i-- && tmpbin)
+      tmpbin=tmpbin->next;
+    if (tmpbin)
+      res|=tmpbin->body[(rip+j)&(AOT_BIN_BLK_SIZE-1)]<<(j*8);
+  }
+  return res;
+}
+
+U0 A64AOTAlign(CCmpCtrl *cc,I64 align)
+{//Pad the AOT output to a multiple of align (ARM64 code must be aligned).
+  while (cc->aotc->rip&(align-1))
+    AOTStoreCodeU8(cc,0);
+}
+
+U0 A64AOTWrite32(CCmpCtrl *cc,I64 rip,U32 ins)
+{
+  AOTStoreCodeU8At(cc,rip,ins.u8[0],ins.u8[1],ins.u8[2],ins.u8[3]);
+}
+
+//ARM64 relocation types for asm label references ($LK,"AsmResolve",A="MN:AsmResolve"$).
+//They follow $LK,"IET_MAIN",A="MN:IET_MAIN"$ and are never written to BIN files.
+#define IET_A64_B26	32 //B, BL
+#define IET_A64_B19	34 //B.cond, CBZ, CBNZ, LDR literal
+#define IET_A64_B14	36 //TBZ, TBNZ
+#define IET_A64_ADR21	38 //ADR
+#define IET_A64_ADRP	40 //ADRP (page delta)
+#define IET_A64_FIRST	IET_A64_B26
+
+Bool A64PatchRel(CCmpCtrl *cc,I64 rip,I64 type,I64 off,U8 *label=NULL)
+{//Patch a PC-relative field of the instruction at rip. off is target-rip.
+  U32 ins=A64AOTRead32(cc,rip);
+  I64 lim;
+  switch (type) {
+    case IET_A64_B26:
+      lim=1<<27;
+      ins=ins&0xFC000000|((off>>2)&0x3FFFFFF);
+      break;
+    case IET_A64_B19:
+      lim=1<<20;
+      ins=ins&0xFF00001F|(((off>>2)&0x7FFFF)<<5);
+      break;
+    case IET_A64_B14:
+      lim=1<<15;
+      ins=ins&0xFFF8001F|(((off>>2)&0x3FFF)<<5);
+      break;
+    case IET_A64_ADR21:
+      lim=1<<20;
+      ins=ins&0x9F00001F|((off&3)<<29)|(((off>>2)&0x7FFFF)<<5);
+      break;
+    case IET_A64_ADRP:
+      off=((rip+off)>>12)-(rip>>12);
+      lim=1<<20;
+      ins=ins&0x9F00001F|((off&3)<<29)|(((off>>2)&0x7FFFF)<<5);
+      break;
+    default:
+      return FALSE;
+  }
+  if (!(-lim<=off<lim) || (type!=IET_A64_ADR21 && type!=IET_A64_ADRP && off&3)) {
+    if (label)
+      PrintErr("ARM64 branch out of range or misaligned: %s\n",label);
+    else
+      PrintErr("ARM64 branch out of range or misaligned\n");
+    LexExcept(cc);
+  }
+  A64AOTWrite32(cc,rip,ins);
+  return TRUE;
+}
+
+I64 A64ImageWrite(CAOT *tmpaot,U8 *filename)
+{/*Write an ARM64 boot image instead of a TempleOS BIN file.
+
+Layout:
+  [0,aot_U8s)	the module, starting with the boot code's arm64 Image header
+  8 aligned	relocation table: I64 cnt, then cnt U32 module offsets of
+		I64 addresses the boot code adds the load address to
+  8 aligned	module-level code table: I64 cnt, then cnt U32 offsets of
+		code blocks the boot code runs in order (returns with IC_RET)
+
+The boot code finds the tables through three exported I64 slots it defines:
+  ARM64_RELOCS	gets the relocation table offset
+  ARM64_MAINS	gets the module-level code table offset
+  ARM64_IMAGE_SIZE gets the file size added to what it holds (the extra
+		memory the kernel wants after the image, e.g. for its stack)
+Imports are not allowed: an ARM64 image has no loader to resolve them.
+Returns the number of errors.*/
+  I64 i,errs=0,num_relocs=0,num_mains=0,relocs_off,mains_off,size,
+	slot_relocs=-1,slot_mains=-1,slot_size=-1,*slot;
+  U8 *img;
+  U32 *tbl;
+  CAOTAbsAddr *tmpa;
+  CAOTImportExport *tmpie;
+
+  for (tmpa=tmpaot->abss;tmpa;tmpa=tmpa->next) {
+    if (tmpa->type==AAT_ADD_U64)
+      num_relocs++;
+    else {
+      PrintErr("ARM64 image: only 64-bit absolute addresses can be relocated "
+	    "(type %d at %X)\n",tmpa->type,tmpa->rip);
+      errs++;
+    }
+  }
+  if (tmpaot->heap_glbls) {
+    PrintErr("ARM64 image: heap globals are not supported\n");
+    errs++;
+  }
+  tmpie=tmpaot->next_ie;
+  while (tmpie!=&tmpaot->next_ie) {
+    if (tmpie->type==IET_MAIN)
+      num_mains++;
+    else if (IET_REL32_EXPORT<=tmpie->type<=IET_IMM64_EXPORT) {
+      if (tmpie->str) {
+	if (!StrCmp(tmpie->str,"ARM64_RELOCS"))
+	  slot_relocs=tmpie->rip;
+	else if (!StrCmp(tmpie->str,"ARM64_MAINS"))
+	  slot_mains=tmpie->rip;
+	else if (!StrCmp(tmpie->str,"ARM64_IMAGE_SIZE"))
+	  slot_size=tmpie->rip;
+      }
+    } else {
+      PrintErr("ARM64 image: unresolved import '%s'\n",tmpie->str);
+      errs++;
+    }
+    tmpie=tmpie->next;
+  }
+  if (slot_relocs<0 || slot_mains<0 || slot_size<0) {
+    PrintErr("ARM64 image: the boot code must export the I64 slots "
+	  "ARM64_RELOCS, ARM64_MAINS and ARM64_IMAGE_SIZE\n");
+    errs++;
+  }
+  if (errs)
+    return errs;
+
+  relocs_off=(tmpaot->aot_U8s+7)&~7;
+  mains_off=(relocs_off+8+num_relocs*sizeof(U32)+7)&~7;
+  size=(mains_off+8+num_mains*sizeof(U32)+15)&~15;
+  img=CAlloc(size);
+  MemCpy(img,tmpaot->buf,tmpaot->aot_U8s);
+
+  slot=img+relocs_off;
+  *slot=num_relocs;
+  tbl=img+relocs_off+8;
+  i=0;
+  for (tmpa=tmpaot->abss;tmpa;tmpa=tmpa->next)
+    tbl[i++]=tmpa->rip;
+
+  slot=img+mains_off;
+  *slot=num_mains;
+  tbl=img+mains_off+8;
+  i=0;
+  tmpie=tmpaot->next_ie;
+  while (tmpie!=&tmpaot->next_ie) {
+    if (tmpie->type==IET_MAIN)
+      tbl[i++]=tmpie->rip;
+    tmpie=tmpie->next;
+  }
+
+  slot=img+slot_relocs;
+  *slot=relocs_off;
+  slot=img+slot_mains;
+  *slot=mains_off;
+  slot=img+slot_size;
+  *slot+=size;
+
+  FileWrite(filename,img,size);
+  "ARM64 image %s: %d bytes, %d relocations, %d module-level blocks\n",
+	filename,size,num_relocs,num_mains;
+  Free(img);
+  return 0;
+}
+#exe {Option(OPTf_WARN_PAREN,ON);};

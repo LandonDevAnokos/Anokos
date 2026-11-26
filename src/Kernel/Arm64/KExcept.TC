@@ -1,0 +1,68 @@
+//ARM64 exceptions. The vectors in $LK,"KStart",A="FF:::/Kernel/Arm64/KStart.TC,ARM64_VECTORS"$ call this with the saved
+//registers. Interrupts aren't enabled yet, so every exception is a crash
+//report for now.
+
+U8 *arm_except_kinds[16]={
+  "Sync (EL1, SP0)","IRQ (EL1, SP0)","FIQ (EL1, SP0)","SError (EL1, SP0)",
+  "Sync","IRQ","FIQ","SError",
+  "Sync (EL0)","IRQ (EL0)","FIQ (EL0)","SError (EL0)",
+  "Sync (EL0 AArch32)","IRQ (EL0 AArch32)","FIQ (EL0 AArch32)",
+  "SError (EL0 AArch32)"};
+
+U8 *ArmEsrClass(I64 ec)
+{
+  switch (ec) {
+    case 0x00: return "Unknown instruction";
+    case 0x01: return "WFI/WFE trap";
+    case 0x07: return "FP/SIMD access";
+    case 0x0E: return "Illegal execution state";
+    case 0x15: return "SVC";
+    case 0x16: return "HVC";
+    case 0x17: return "SMC";
+    case 0x18: return "System register access";
+    case 0x20: return "Instruction abort (EL0)";
+    case 0x21: return "Instruction abort";
+    case 0x22: return "PC alignment fault";
+    case 0x24: return "Data abort (EL0)";
+    case 0x25: return "Data abort";
+    case 0x26: return "SP alignment fault";
+    case 0x2C: return "FP exception";
+    case 0x2F: return "SError";
+    case 0x3C: return "BRK";
+  }
+  return "Other";
+}
+
+U0 ArmExcept(I64 kind,I64 *regs)
+{//regs: X0-X30, then ELR, SPSR, ESR.
+  I64 i,esr=regs[33];
+  ArmSerPutS("\n\n*** ARM64 exception: ");
+  ArmSerPutS(arm_except_kinds[kind&15]);
+  ArmSerPutS(" - ");
+  ArmSerPutS(ArmEsrClass(esr>>26&0x3F));
+  ArmSerPutS("\nESR=");
+  ArmSerPutHex(esr,8);
+  ArmSerPutS(" ELR=");
+  ArmSerPutHex(regs[31]);
+  ArmSerPutS(" (image+");
+  ArmSerPutHex(regs[31]-arm64_load_base,8);
+  ArmSerPutS(") FAR=");
+  ArmSerPutHex(ArmFar);
+  ArmSerPutS("\nSPSR=");
+  ArmSerPutHex(regs[32],8);
+  ArmSerPutS(" SP=");
+  ArmSerPutHex(regs(U8 *)+34*8);
+  for (i=0;i<31;i++) {
+    if (!(i&3))
+      ArmSerPutS("\n");
+    ArmSerPutS(" X");
+    if (i<10)
+      ArmSerPutChar('0');
+    ArmSerPutDec(i);
+    ArmSerPutChar('=');
+    ArmSerPutHex(regs[i]);
+  }
+  ArmSerPutS("\nHalted.\n");
+  while (TRUE)
+    ArmWfi;
+}

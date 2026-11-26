@@ -1,0 +1,108 @@
+//ARM64 version of the asm block in $LK,"StrA",A="FI:::/Kernel/StrA.TC"$: string compares and
+//copies with the same labels and results as the x86 originals.
+//See $LK,"Arm64/KUtils",A="FI:::/Kernel/Arm64/KUtils.TC"$ for the calling convention.
+//
+//Still to port with the rest of StrA: PUT_HEX_Uxx, PUT_CHARS and PUT_STR
+//(asm-callable wrappers around $LK,"PutHex",A="MN:PutHex"$, $LK,"PutChars",A="MN:PutChars"$ and $LK,"PutS",A="MN:PutS"$).
+
+asm {
+_STRCPY::	//U0 StrCpy(U8 *dst,U8 *src). src=NULL gives "".
+	LDP	X3,X4,[SP]
+	ADD	SP,SP,16
+	CBZ	X3,@@15
+	MOV	X1,0
+	CBZ	X4,@@10
+@@05:	LDRB	W1,[X4],1
+@@10:	STRB	W1,[X3],1
+	CBNZ	W1,@@05
+@@15:	RET
+
+_STRCMP::	//I64 StrCmp(U8 *st1,U8 *st2): -1, 0 or 1
+	LDP	X3,X4,[SP]
+	ADD	SP,SP,16
+@@05:	LDRB	W1,[X3],1
+	LDRB	W2,[X4],1
+	CMP	X1,X2
+	BNE	@@10
+	CBNZ	W1,@@05
+	MOV	X0,0
+	RET
+@@10:	MOV	X0,1
+	BHI	@@15
+	MOV	X0,-1
+@@15:	RET
+
+TO_UPPER::	//IN/OUT: W0. Keeps everything else.
+	SUB	W16,W0,'a'
+	CMP	W16,'z'-'a'
+	BHI	@@05
+	SUB	W0,W0,'a'-'A'
+@@05:	RET
+
+_STRICMP::	//I64 StrICmp(U8 *st1,U8 *st2)
+	LDP	X3,X4,[SP]
+	ADD	SP,SP,16
+@@05:	LDRB	W1,[X3],1
+	LDRB	W2,[X4],1
+	SUB	W16,W1,'a'
+	CMP	W16,'z'-'a'
+	BHI	@@06
+	SUB	W1,W1,'a'-'A'
+@@06:	SUB	W16,W2,'a'
+	CMP	W16,'z'-'a'
+	BHI	@@07
+	SUB	W2,W2,'a'-'A'
+@@07:	CMP	X1,X2
+	BNE	@@10
+	CBNZ	W1,@@05
+	MOV	X0,0
+	RET
+@@10:	MOV	X0,1
+	BHI	@@15
+	MOV	X0,-1
+@@15:	RET
+
+_STRNCMP::	//I64 StrNCmp(U8 *st1,U8 *st2,I64 n)
+	LDP	X3,X4,[SP]
+	LDR	X5,[SP,16]
+	ADD	SP,SP,24
+	MOV	X0,0
+@@05:	CBZ	X5,@@15
+	SUB	X5,X5,1
+	LDRB	W1,[X3],1
+	LDRB	W2,[X4],1
+	CMP	X1,X2
+	BNE	@@10
+	CBNZ	W1,@@05
+	RET
+@@10:	MOV	X0,1
+	BHI	@@15
+	MOV	X0,-1
+@@15:	RET
+
+_STRNICMP::	//I64 StrNICmp(U8 *st1,U8 *st2,I64 n)
+	LDP	X3,X4,[SP]
+	LDR	X5,[SP,16]
+	ADD	SP,SP,24
+	MOV	X0,0
+@@05:	CBZ	X5,@@15
+	SUB	X5,X5,1
+	LDRB	W1,[X3],1
+	LDRB	W2,[X4],1
+	SUB	W16,W1,'a'
+	CMP	W16,'z'-'a'
+	BHI	@@06
+	SUB	W1,W1,'a'-'A'
+@@06:	SUB	W16,W2,'a'
+	CMP	W16,'z'-'a'
+	BHI	@@07
+	SUB	W2,W2,'a'-'A'
+@@07:	CMP	X1,X2
+	BNE	@@10
+	CBNZ	W1,@@05
+	RET
+@@10:	MOV	X0,1
+	BHI	@@15
+	MOV	X0,-1
+@@15:	RET
+}

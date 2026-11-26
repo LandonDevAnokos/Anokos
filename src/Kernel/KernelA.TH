@@ -1558,6 +1558,9 @@ public class CAutoCompleteDictGlbls
 //Disable 10-byte float consts for ã,log2_10,log10_2,loge_2
 #define OPTf_NO_BUILTIN_CONST	0x24 //Applied to funs, not stmts
 #define OPTf_USE_IMM64		0x25 //Not completely implemented
+//AOT compile function bodies to ARM64 (AArch64) machine code.
+//Expressions the compiler runs on the build machine stay x86-64.
+#define OPTf_ARM64		0x26
 
 #define OPTF_ECHO		(1<<OPTf_ECHO)
 
@@ -2018,6 +2021,7 @@ class CAOT
   CAOTImportExport *next_ie,*last_ie;
   CAOTAbsAddr *abss;
   CAOTHeapGlbl *heap_glbls;
+  Bool	arm64; //Compiled with $LK,"OPTf_ARM64",A="MN:OPTf_ARM64"$: written as an ARM64 image
 };
 
 class CStreamBlk

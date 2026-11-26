@@ -920,7 +920,9 @@ U0 PrsAsmBlk(CCmpCtrl *cc,I64 cmp_flags)
   }
   while (cc->token && cc->token!='}') {
     AsmLineLst(cc);
-    if (cc->token==TK_IDENT && cc->hash_entry) {
+    if (Bt(&cc->opts,OPTf_ARM64) && PrsArm64Ins(cc)) {
+//ARM64 instruction ($LK,"PrsArm64Ins",A="MN:PrsArm64Ins"$)
+    } else if (cc->token==TK_IDENT && cc->hash_entry) {
       if (cc->hash_entry->type&HTT_ASM_KEYWORD) {
 	i=cc->hash_entry->user_data0;
 	Lex(cc); //skip keyword

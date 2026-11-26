@@ -1,0 +1,91 @@
+//ARM64 version of $LK,"KMathA",A="FI:::/Kernel/KMathA.TC"$ (x87 asm on x86-64), same labels.
+//
+//Rounding, Sign and the FP control words are ARM64 asm here. ARM64 has
+//no instructions for Exp, Ln, Pow or atan, and the D3 vector ops are
+//plain F64 math, so those labels branch to TerryC versions in
+//$LK,"Arm64/KMathB",A="FI:::/Kernel/Arm64/KMathB.TC"$ (the args are already where a TerryC function wants them).
+
+asm {
+_ROUND::	//F64 Round(F64 d): to nearest, ties to even (x87 default)
+	LDR	D0,[SP]
+	ADD	SP,SP,8
+	FRINTN	D0,D0
+	FMOV	X0,D0
+	RET
+_TRUNC::
+	LDR	D0,[SP]
+	ADD	SP,SP,8
+	FRINTZ	D0,D0
+	FMOV	X0,D0
+	RET
+_FLOOR::
+	LDR	D0,[SP]
+	ADD	SP,SP,8
+	FRINTM	D0,D0
+	FMOV	X0,D0
+	RET
+_CEIL::
+	LDR	D0,[SP]
+	ADD	SP,SP,8
+	FRINTP	D0,D0
+	FMOV	X0,D0
+	RET
+_SQR::
+	LDR	D0,[SP]
+	ADD	SP,SP,8
+	FMUL	D0,D0,D0
+	FMOV	X0,D0
+	RET
+_SIGN::		//-1.0, 0.0 (also for NaN) or 1.0
+	LDR	D0,[SP]
+	ADD	SP,SP,8
+	MOV	X0,0
+	FCMP	D0,0
+	BEQ	@@05
+	BVS	@@05
+	MOV	X0,0x3FF0000000000000
+	BGT	@@05
+	MOV	X0,0xBFF0000000000000
+@@05:	RET
+
+//x87 control/status words: ARM64 keeps its FP state in FPCR/FPSR, which
+//the kernel leaves at round-to-nearest with no traps.
+_FLDCW::
+	ADD	SP,SP,8
+	RET
+_FSTCW::
+	MOV	X0,0x037F	//x87 default: round to nearest, all masked
+	RET
+_FSTSW::
+	MOV	X0,0
+	RET
+_FCLEX::
+	MSR	FPSR,XZR
+	RET
+
+_EXP::		B	ArmExp
+_LN::		B	ArmLn
+_LOG2::		B	ArmLog2
+_LOG10::	B	ArmLog10
+_POW::		B	ArmPow
+_POW10::	B	ArmPow10
+_ARG::		B	ArmArg
+_D3_NORM::	B	ArmD3Norm
+_D3_NORM_SQR::	B	ArmD3NormSqr
+_D3_DIST::	B	ArmD3Dist
+_D3_DIST_SQR::	B	ArmD3DistSqr
+_D3_CROSS::	B	ArmD3Cross
+_D3_DOT::	B	ArmD3Dot
+_D3_ADD::	B	ArmD3Add
+_D3_SUB::	B	ArmD3Sub
+_D3_MUL::	B	ArmD3Mul
+_D3_DIV::	B	ArmD3Div
+_D3_ZERO::	B	ArmD3Zero
+_D3_COPY::	B	ArmD3Copy
+_D3_EQU::	B	ArmD3Equ
+_D3_ADD_EQU::	B	ArmD3AddEqu
+_D3_SUB_EQU::	B	ArmD3SubEqu
+_D3_MUL_EQU::	B	ArmD3MulEqu
+_D3_DIV_EQU::	B	ArmD3DivEqu
+_D3_UNIT::	B	ArmD3Unit
+}

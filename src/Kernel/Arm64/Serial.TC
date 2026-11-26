@@ -1,0 +1,96 @@
+//ARM64 early console: PL011 UART, polled.
+//The ARM64 kernel's first output device, before the framebuffer and the
+//normal $LK,"RawPutChar",A="MN:RawPutChar"$ path are up.
+
+#define PL011_DR	0x00
+#define PL011_FR	0x18
+#define PL011_IBRD	0x24
+#define PL011_FBRD	0x28
+#define PL011_LCRH	0x2C
+#define PL011_CR	0x30
+#define PL011_ICR	0x44
+#define PL011_FR_BUSY	0x08
+#define PL011_FR_RXFE	0x10
+#define PL011_FR_TXFF	0x20
+
+U0 ArmSerInit(I64 baud=115200)
+{
+  U32 *cr,*fr;
+  I64 div64;
+  if (!arm_board.uart_base)
+    return;
+  cr=arm_board.uart_base+PL011_CR;
+  fr=arm_board.uart_base+PL011_FR;
+  if (!arm_board.uart_clk) {//Keep the divisor; make sure TX and RX are on.
+    *cr=*cr|0x301;
+    return;
+  }
+  while (*fr&PL011_FR_BUSY) {}
+  *cr=0;
+  *(arm_board.uart_base+PL011_ICR)(U32 *)=0x7FF;
+  div64=(arm_board.uart_clk*4+baud/2)/baud; //16.6 fixed point of clk/(16*baud)
+  *(arm_board.uart_base+PL011_IBRD)(U32 *)=div64>>6;
+  *(arm_board.uart_base+PL011_FBRD)(U32 *)=div64&63;
+  *(arm_board.uart_base+PL011_LCRH)(U32 *)=0x70; //8N1, FIFOs on
+  *cr=0x301;
+}
+
+U0 ArmSerPutChar(U8 ch)
+{
+  U32 *fr,*dr;
+  if (!arm_board.uart_base)
+    return;
+  fr=arm_board.uart_base+PL011_FR;
+  dr=arm_board.uart_base+PL011_DR;
+  if (ch=='\n') {
+    while (*fr&PL011_FR_TXFF) {}
+    *dr='\r';
+  }
+  while (*fr&PL011_FR_TXFF) {}
+  *dr=ch;
+}
+
+I64 ArmSerGetChar()
+{//Next received char, or -1.
+  U32 *fr,*dr;
+  if (!arm_board.uart_base)
+    return -1;
+  fr=arm_board.uart_base+PL011_FR;
+  dr=arm_board.uart_base+PL011_DR;
+  if (*fr&PL011_FR_RXFE)
+    return -1;
+  return *dr&0xFF;
+}
+
+U0 ArmSerPutS(U8 *st)
+{
+  while (*st)
+    ArmSerPutChar(*st++);
+}
+
+U0 ArmSerPutHex(I64 num,I64 digits=16)
+{
+  I64 i;
+  U8 *hex="0123456789ABCDEF";
+  for (i=digits-1;i>=0;i--)
+    ArmSerPutChar(hex[(num>>(i*4))&15]);
+}
+
+U0 ArmSerPutDec(I64 num)
+{
+  U8 buf[24];
+  I64 i=0;
+  Bool neg=FALSE;
+  if (num<0) {
+    neg=TRUE;
+    num=-num;
+  }
+  do {
+    buf[i++]='0'+num%10;
+    num/=10;
+  } while (num);
+  if (neg)
+    ArmSerPutChar('-');
+  while (i)
+    ArmSerPutChar(buf[--i]);
+}

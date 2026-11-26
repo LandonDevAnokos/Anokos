@@ -12,8 +12,10 @@ U8 *LexStmt2Bin(CCmpCtrl *cc,I64 *_type,I64 cmp_flags=0)
       cc->coc.coc_head.last->ic_flags&=~ICF_RES_NOT_USED;
       ICAdd(cc,IC_RETURN_VAL2,0,0);
       ICAdd(cc,IC_RET,0,0);
-      if (res=COCCompile(cc,&size,NULL,_type)) {
+      if (res=COCCompile(cc,&size,NULL,_type,TRUE)) {
 	if (cc->flags&CCF_AOT_COMPILE) {
+	  if (Bt(&cc->opts,OPTf_ARM64))
+	    A64AOTAlign(cc,8);
 	  j=cc->aotc->rip;
 	  k=(size+7)>>3;
 	  for (i=0;i<k;i++)
@@ -163,6 +165,8 @@ CAOT *CmpBuf(U8 *buf,U8 *map_name=NULL,
   cc->flags|=CCF_AOT_COMPILE;
   QueIns(cc,Fs->last_cc);
   res=CmpJoin(cc,CMPF_LEX_FIRST,map_name,mapfile_drv_let);
+  if (res)
+    res->arm64=Bt(&cc->opts,OPTf_ARM64);
   if (error_cnt)   *error_cnt=cc->error_cnt;
   if (warning_cnt) *warning_cnt=cc->warning_cnt;
   QueRem(cc);
@@ -433,7 +437,35 @@ I64 Cmp(U8 *filename,U8 *map_name=NULL,U8 *out_name=NULL,U8 mapfile_drv_let=0)
   if (map_name)
     fbuf3=ExtDft(map_name,"MAP.Z");
 
-  if (tmpaot=CmpBuf(fbuf2,fbuf3,&error_cnt,&warning_cnt,mapfile_drv_let)) {
+  if ((tmpaot=CmpBuf(fbuf2,fbuf3,&error_cnt,&warning_cnt,mapfile_drv_let)) &&
+	tmpaot->arm64) {
+    aot_U8s=tmpaot->aot_U8s;
+    Free(fbuf2);
+    if (out_name)
+      fbuf2=ExtDft(out_name,"IMG");
+    else
+      fbuf2=ExtChg(fbuf,"IMG");
+    error_cnt+=A64ImageWrite(tmpaot,fbuf2);
+    size=aot_U8s;
+    tmpa=tmpaot->abss;
+    while (tmpa) {
+      tmpa1=tmpa->next;
+      Free(tmpa);
+      tmpa=tmpa1;
+    }
+    tmpie=tmpaot->next_ie;
+    while (tmpie!=&tmpaot->next_ie) {
+      tmpie1=tmpie->next;
+      QueRem(tmpie);
+      Free(tmpie->str);
+      Free(tmpie->src_link);
+      Free(tmpie);
+      tmpie=tmpie1;
+    }
+    Free(tmpaot->buf);
+    QueDel(tmpaot);
+    Free(tmpaot);
+  } else if (tmpaot) {
     aot_U8s=tmpaot->aot_U8s;
     ptr=patch_table;
 //See $LK,"Load",A="MN:Load"$()
