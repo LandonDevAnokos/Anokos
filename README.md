@@ -1,14 +1,25 @@
 # Anokos
 
-**Anokos** is an open-source x86-64 operating system and kernel, built as a heavily modified
+**Anokos** is an open-source operating system and kernel, built as a heavily modified
 descendant of [TempleOS](https://en.wikipedia.org/wiki/TempleOS), the public-domain operating
 system written by Terry A. Davis.
 
 The goal is a community-developed OS anyone can use, study and contribute to, developed in the
-open on GitHub.
+open on GitHub. Anokos runs on x86-64 today, with ARM64 and PowerPC planned.
 
 > **Status:** first bootable milestone. Anokos boots straight into its own full-screen terminal
 > (white text on black) at the display's native resolution, with no desktop environment.
+> See the [roadmap](ROADMAP.md) for what comes next.
+
+## Roadmap
+
+Planned milestones, in order (details in [ROADMAP.md](ROADMAP.md)):
+
+1. **TerryC:** rename the HolyC language to TerryC, with `.TC`/`.TH` source files
+2. **PCI and PCI Express:** full hardware discovery and a driver model
+3. **Ring 3:** run applications in user mode, protected from the kernel
+4. **GPU and graphics:** real graphics drivers and a modern graphics library
+5. **Multi-architecture:** ARM64 (Raspberry Pi) and ppc64 (Power Mac G5) alongside x86-64
 
 ## Repository layout
 
@@ -16,6 +27,7 @@ open on GitHub.
 | --- | --- |
 | [`src/`](src/) | The Anokos source tree (HolyC `.HC`/`.HH`, DolDoc `.DD`, data files). Starts as the full TempleOS tree. |
 | [`TempleOS/`](TempleOS/) | The original `TempleOS.ISO`, kept **byte-for-byte unmodified** as the reference upstream. Do not edit. |
+| [`ROADMAP.md`](ROADMAP.md) | Planned milestones and the order they will be worked on. |
 | [`tools/`](tools/) | Host-side tooling: ISO extraction (`redsea_extract.py`), ISO building (`build_iso.py`) and the build driver (`anokos_build.py`). |
 
 ### Inside `src/`
@@ -24,7 +36,7 @@ open on GitHub.
 | --- | --- |
 | `Kernel/` | Core kernel: boot, VBE framebuffer, memory, scheduler, interrupts, block devices, RedSea/FAT32 filesystems |
 | `Anokos/` | The Anokos system layer: the full-screen terminal (`Term.HC`) |
-| `Compiler/` | The HolyC JIT/AOT compiler and assembler |
+| `Compiler/` | The HolyC JIT/AOT compiler and assembler (HolyC is being renamed TerryC) |
 | `Adam/` | The "Adam" system layer: window manager, DolDoc, graphics, sound, autocomplete, GUI controls |
 | `Apps/` | Bundled applications |
 | `Demo/` | Example and demo programs |

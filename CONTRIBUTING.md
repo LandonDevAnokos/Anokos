@@ -14,6 +14,13 @@ requests.
 For large changes (new subsystems, filesystem or ABI changes, removing major features), open an
 issue first to discuss the design.
 
+## Where to help
+
+The [roadmap](ROADMAP.md) lists the planned milestones in order. Work on the current milestone
+is the most useful, but bug fixes and smaller improvements are always welcome. For work on a
+later milestone, open an issue first so it can be planned around earlier changes; for example,
+the TerryC rename (milestone 1) will touch most files in `src/`.
+
 ## Building and testing
 
 See [Building and running](README.md#building-and-running). In short:
