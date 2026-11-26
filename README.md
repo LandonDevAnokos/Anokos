@@ -53,5 +53,4 @@ Details are in [ROADMAP.md](ROADMAP.md).
 
 ## License
 
-Anokos is licensed under the [GNU General Public License v2.0 only](LICENSE), like the Linux
-kernel. It is derived from TempleOS by Terry A. Davis, which he released into the public domain.
+Anokos is licensed under the [GNU General Public License v2.0 only](LICENSE). It is derived from TempleOS by Terry A. Davis, which he released into the public domain.
