@@ -55,7 +55,7 @@ $ID,2$The stack does not grow, so do not do deep recursion.  In theory, memory g
 $ID,-2$$TR,"How do I set the PATH?"$
 $ID,2$There is no $FG,2$PATH$FG$.  You do not enter filenames at the command-line and expect them to run.  You enter C-like code.  $LK,"Get Started Here",A="FI:::/Doc/CmdLineOverview.DD"$.
 $ID,-2$$TR,"How do I boot it with Grub?"$
-$ID,2$If you use Grub, you $FG,2$chain-load$FG$ like Windows.  See $LK,"Boot",A="FI:::/Doc/Boot.DD"$.  You can use the TempleOS boot-loader.  $LK,"Master-Boot-Loader-Stage1",A="FI:::/Adam/Opt/Boot/BootMHD.TC"$, $LK,"Master-Boot-Loader-Stage2",A="FI:::/Adam/Opt/Boot/BootMHD2.TC"$, $LK,"Partition-Boot-Loader",A="FI:::/Adam/Opt/Boot/BootHD.TC"$, $LK,"CD-DVD-Boot-Loader",A="FI:::/Adam/Opt/Boot/BootDVD.TC"$.
+$ID,2$If you use Grub, you $FG,2$chain-load$FG$ like Windows.  See $LK,"Boot",A="FI:::/Doc/Boot.DD"$.  You can use the TempleOS boot-loader.  $LK,"Master-Boot-Loader-Stage1",A="FI:::/Anokos/Opt/Boot/BootMHD.TC"$, $LK,"Master-Boot-Loader-Stage2",A="FI:::/Anokos/Opt/Boot/BootMHD2.TC"$, $LK,"Partition-Boot-Loader",A="FI:::/Anokos/Opt/Boot/BootHD.TC"$, $LK,"CD-DVD-Boot-Loader",A="FI:::/Anokos/Opt/Boot/BootDVD.TC"$.
 $ID,-2$$TR,"How do I get Kernel.BIN to boot?"$
 $ID,2$The boot-loaders must be patched by you running $LK,"BootHDIns",A="MN:BootHDIns"$() or $LK,"BootMHDIns",A="MN:BootMHDIns"$().  Those will write the block address into the boot-loader because the boot-loaders do not navigate file systems to find the $LK,"Stage2",A="FI:::/Kernel/KStart16.TC"$ if you relocate it.
 $ID,-2$$TR,"Why is there some 16-Bit code?"$

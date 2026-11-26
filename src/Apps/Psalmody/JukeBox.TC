@@ -85,16 +85,6 @@ Bool JBPutKey(CDoc *doc,U8 *,I64 ch,I64 sc)
 	DocWrite(doc2);
 	DocDel(doc2);
       }
-      if (DocTreeFFind(tmpde->full_name,"Reward1/Reward2")) {
-	for (i=0;i<5;i++) {
-	  st=MStrPrint("%s %s %s %s ",
-		GodWordStr,GodWordStr,GodWordStr,GodWordStr);
-	  DocTreeFAppend(tmpde->full_name,"Reward1/Reward2",
-		"\"%s\"\n",st);
-	  Free(st);
-	}
-	In("");
-      }
       return TRUE;
     } else if (ch==CH_SPACE||ch==CH_ESC)
       tmpde->user_data++; //JB_RUN_LEVEL++

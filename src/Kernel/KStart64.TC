@@ -71,7 +71,7 @@ USE64
 	RET
 
 //************************************
-SYS_RAM_REBOOT:: //This gets copied high.  $LK,"SYS_RAM_REBOOT",A="FF:::/Adam/Opt/Boot/BootRAM.TC,SYS_RAM_REBOOT:2"$
+SYS_RAM_REBOOT:: //This gets copied high.  $LK,"SYS_RAM_REBOOT",A="FF:::/Anokos/Opt/Boot/BootRAM.TC,SYS_RAM_REBOOT:2"$
 	PUSH	U32 CGDT.ds		//stk seg
 	PUSH	U32 BOOT_RAM_LIMIT	//stk
 	PUSH	U32 0			//flags

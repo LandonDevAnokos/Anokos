@@ -105,6 +105,12 @@ kernel is protected from them.
 
 **Done when** a misbehaving user program can crash only itself, and the system keeps running.
 
+**Starting point:** Terry left a working ring 3 example in
+[`src/Demo/Lectures/Ring3.TC`](src/Demo/Lectures/Ring3.TC). It switches to ring 3 using the
+ring-3 code and data segments that already exist in the kernel's GDT (`GDT_CS64_RING3` and
+`GDT_DS_RING3` in `src/Kernel/KStart16.TC`) and each CPU's ring-3 task state segment, then
+returns to ring 0 through a general protection fault handler.
+
 ---
 
 ## Milestone 4: GPU and graphics support

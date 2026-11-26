@@ -40,7 +40,7 @@ U0 MsUpdate(I64 x,I64 y,I64 z,Bool l,Bool r)
 }
 
 U0 MsSet(I64 x=I64_MAX,I64 y=I64_MAX,I64 z=I64_MAX,I64 l=I64_MAX,I64 r=I64_MAX)
-{//Note: Generates a message. See $LK,"MsSet",A="FF:::/Demo/Games/Zing.TC,MsSet"$().
+{//Note: Generates a message.
   if (!(0<=x<GR_WIDTH))
     x=ms.pos.x;
   if (!(0<=y<GR_HEIGHT))

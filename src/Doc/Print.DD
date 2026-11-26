@@ -68,7 +68,7 @@ $LK,"XTalkStr",A="MN:XTalkStr"$(CTask *task,U8 *fmt,...) sends text of an $LK,"I
 
 $LK,"DocPrint",A="MN:DocPrint"$(CDoc *doc,U8 *fmt,...) sends text to a document.  You can buffer to a Doc and save it, providing the functionality of $FG,2$fprintf$FG$.  See $LK,"::/Demo/Dsk/FPrintF.TC"$.
 
-$LK,"Adam",A="MN:Adam"$(U8 *fmt,...) sends text to the $LK,"Adam Task",A="FF:::/Doc/Glossary.DD,Adam Task"$ to be compiled and run.
+$LK,"Adam",A="MN:Anokos"$(U8 *fmt,...) sends text to the $LK,"Adam Task",A="FF:::/Doc/Glossary.DD,Adam Task"$ to be compiled and run.
 $LK,"AdamLog",A="MN:AdamLog"$(U8 *fmt,...) and $LK,"AdamErr",A="MN:AdamErr"$(U8 *fmt,...) send text to the $LK,"Adam Task",A="FF:::/Doc/Glossary.DD,Adam Task"$ to be displayed.
 
 $LK,"StreamPrint",A="MN:StreamPrint"$(U8 *fmt,...) sends text to the stream of code being compiled and must reside in a $FG,2$#exe{}$FG$ blk.

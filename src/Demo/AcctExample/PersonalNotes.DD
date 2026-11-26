@@ -24,11 +24,9 @@ $WW,1$$FG,5$$TX+CX,"TODO"$$FG$
 
 * 170624 $LK,"DskChk",A="MN:DskChk"$() showed extra alloced clus for FAT32, Sup1Hymns.  ClusNum was '.'+1 and clus was zero.
 
-* $LK,"::/Apps/X-Caliber/X-Caliber.TC"$
 * Add asteroid harbor defense.
 * Afterburner thruster.
 
-* $LK,"::/Apps/Titanium/Titanium.TC"$
 * Lead-in at start of game with no enemy.
 * Have highway of death.
 * Fix straight shooting.
@@ -37,18 +35,18 @@ $WW,1$$FG,5$$TX+CX,"TODO"$$FG$
 
 * $MA-X+PU,"64-Bit Device Memory",LM="F(\"mem64_ptr\");View;"$ is not implemented.
 
-* Investigate why packet loss $LK,"Training Sleep(1)",A="FF:::/Adam/Training.TC,Sleep(1)"$.
+* Investigate why packet loss $LK,"Training Sleep(1)",A="FF:::/Anokos/Training.TC,Sleep(1)"$.
 
 * Add AVL or red/black binary tree library support.  We have fixed-size stack.  Auto-balancing binary tree is very needed.  I've done everything myself.  I don't want to ruin a perfect record.  I'm in no hurry.
 
-* $LK,"SpriteEd",A="FI:::/Adam/Gr/SpriteEd.TC"$ shift pts, Ctrl pt for ellipse/polygon w,h is off when rotated.
+* $LK,"SpriteEd",A="FI:::/Anokos/Gr/SpriteEd.TC"$ shift pts, Ctrl pt for ellipse/polygon w,h is off when rotated.
 
-* God said this is bad.  $LK,"FL:::/Adam/DolDoc/DocFind.TC,41"$
+* God said this is bad.  $LK,"FL:::/Anokos/DolDoc/DocFind.TC,41"$
 * Backward <SHIFT-F3> is broken?
 
 * $LK,"Find",A="MN:Find"$() search sprite text?
 
-* Cannot include ':' in $LK,"Document Links",A="FF:::/Adam/DolDoc/DocLink.TC,AD"$ search string.
+* Cannot include ':' in $LK,"Document Links",A="FF:::/Anokos/DolDoc/DocLink.TC,AD"$ search string.
 * $$DA fixed width string: <Del> or <BACKSPACE> permanently shortens.
 
 * 11/19/16 editor took long time after copying old testament onto clip and exiting.
@@ -61,9 +59,9 @@ $WW,1$$FG,5$$TX+CX,"TODO"$$FG$
 
 * $LK,"DOCT_HEX_ED",A="MN:DOCT_HEX_ED"$ with odd size, ASCII cannot be edited.
 
-* $LK,"FL:::/Adam/Gr/SpriteEd.TC,789"$ Resize bitmap?
+* $LK,"FL:::/Anokos/Gr/SpriteEd.TC,789"$ Resize bitmap?
 
-* $LK,"DOCEF_REMALLOC_DATA",A="FF:::/Adam/DolDoc/DocChar.TC,DOCEF_REMALLOC_DATA"$ HexEdit Remalloc.
+* $LK,"DOCEF_REMALLOC_DATA",A="FF:::/Anokos/DolDoc/DocChar.TC,DOCEF_REMALLOC_DATA"$ HexEdit Remalloc.
 
 * $LK,"DOCF_DBL_DOLLARS",A="MN:DOCF_DBL_DOLLARS"$ in $LK,"Reindention",A="MN:EdCodeTools2"$.
 
@@ -87,7 +85,6 @@ $WW,1$$FG,5$$TX+CX,"TODO"$$FG$
 
 * Bible ranges in $LK,"BibleVerse",A="MN:BibleVerse"$(). 
 
-* $LK,"::/Demo/Games/FlatTops.TC"$ is torpedo, not bombs.
 
 * Reset MPs with $LK,"Core0StartMP",A="MN:Core0StartMP"$() after boot.  Free old task memory?
 
@@ -112,7 +109,7 @@ $WW,1$$FG,5$$TX+CX,"TODO"$$FG$
 
 * $LK,"GrLineFat3",A="MN:GrLineFat3"$() needs a little work.
 
-* $LK,"GrFillTri0",A="MN:GrFillTri0"$() with both $LK,"GrHLine",A="MN:GrHLine"$() and $LK,"GrVLine",A="MN:GrVLine"$() don't match in $LK,"::/Demo/Games/CastleFrankenstein.TC"$ causing wall spot pixels.
+* $LK,"GrFillTri0",A="MN:GrFillTri0"$() with both $LK,"GrHLine",A="MN:GrHLine"$() and $LK,"GrVLine",A="MN:GrVLine"$() don't match in  causing wall spot pixels.
 
 
 $FG,5$$TX+CX,"TODO? Meh"$$FG$
@@ -124,13 +121,13 @@ $FG,5$$TX+CX,"TODO? Meh"$$FG$
 
 * $LK,"Mem32DevAlloc",A="MN:Mem32DevAlloc"$() is broken.  Devices should be in free spot of E820 report.
 
-* $LK,"SpriteEd",A="FI:::/Adam/Gr/SpriteEd.TC"$: Strip $LK,"SPT_SHIFT",A="MN:SPT_SHIFT"$ origin cmds?
+* $LK,"SpriteEd",A="FI:::/Anokos/Gr/SpriteEd.TC"$: Strip $LK,"SPT_SHIFT",A="MN:SPT_SHIFT"$ origin cmds?
 
 * Clean-up ASCII #127 delete char?  (No. Maybe, we want a new usage for 127 in future centuries.)
 
 * Compiler: Exceptions don't free $LK,"CCmpCtrl",A="MN:CCmpCtrl"$ stuff.
 
-* $LK,"::/Adam/DolDoc/DocHighlight.TC"$ for code comments at top of documents.
+* $LK,"::/Anokos/DolDoc/DocHighlight.TC"$ for code comments at top of documents.
 
 * Unhandled exception msgs from MP's get overwritten by WinMgr.
 
@@ -147,7 +144,7 @@ $FG,5$$TX+CX,"TODO? Meh"$$FG$
 $FG,5$$TX+CX,"TODO: Too Hard, or Not Worth Doing."$$FG$
 * AutoComplete/$LK,"Man",A="MN:Man"$() Jmp for user code.
 
-* $LK,"Bible sized nodes",A="FF:::/Adam/DolDoc/DocRecalc.TC,->tag+i"$
+* $LK,"Bible sized nodes",A="FF:::/Anokos/DolDoc/DocRecalc.TC,->tag+i"$
 
 * $LK,"FileMgr",A="MN:FileMgr"$() is bad with lots of files.  
 
@@ -173,7 +170,7 @@ $ID,5$$HL,1$U0 Main()
 $ID,-5$$HL,0$
 * Compiler: Get rid of $LK,"0x20000",A="FF:::/Compiler/CMain.TC,0x20000"$ limit.
 
-* $LK,"GrFloodFillRay",A="MN:GrFloodFillRay"$: Get rid of $LK,"0x80000",A="FF:::/Adam/Gr/GrPrimatives.TC,0x80000"$ limit.
+* $LK,"GrFloodFillRay",A="MN:GrFloodFillRay"$: Get rid of $LK,"0x80000",A="FF:::/Anokos/Gr/GrPrimatives.TC,0x80000"$ limit.
 
 
 $FG,5$$TX+CX,"Bugs"$$FG$
@@ -232,9 +229,8 @@ $ID,-5$
 
 * $LK,"U",A="MN:U"$() negative byte displacement, neg 32-bit disp.
 
-* Race condition in $LK,"::/Demo/Games/FlatTops.TC"$ torpedo.
 
-* Links to self document if empty file name? $LK,"Document Links",A="FF:::/Adam/DolDoc/DocLink.TC,AD"$
+* Links to self document if empty file name? $LK,"Document Links",A="FF:::/Anokos/DolDoc/DocLink.TC,AD"$
 
 * $LK,"FUF_RECURSE",A="MN:FUF_RECURSE"$ would be nice if capital "+R".
 
@@ -261,7 +257,7 @@ $FG,5$$TX+CX,"Committee Needed"$$FG$
 
 * Make so just CdRom; command to copy entire disk to ::/CdRom directory? 
 
-* $LK,"MP DepthBuf",A="FF:::/Adam/Gr/SpriteMesh.TC,dc->depth_buf=e->"$ is a kludge because of dc->depth_buf=NULL in various graphics routines.
+* $LK,"MP DepthBuf",A="FF:::/Anokos/Gr/SpriteMesh.TC,dc->depth_buf=e->"$ is a kludge because of dc->depth_buf=NULL in various graphics routines.
 
 * Improve editor undo, add redo.
 
@@ -278,8 +274,8 @@ $FG,5$$TX+CX,"Committee Needed"$$FG$
 
 * $LK,"GrPutChar3",A="MN:GrPutChar3"$() with depth buf?
 
-* Eliminate?  $LK,"::/Adam/Ctrls/CtrlsA.TC"$?
-* Eliminate?  $LK,"::/Adam/AMathODE.TC"$?
+* Eliminate?  $LK,"::/Anokos/Ctrls/CtrlsA.TC"$?
+* Eliminate?  $LK,"::/Anokos/AMathODE.TC"$?
 * Eliminate?  $LK,"Complex",A="MN:Complex"$?
 * Eliminate?  $LK,"CDC",A="MN:CDC"$.brush?
 * Eliminate?  $LK,"Mat4x4MulXYZ",A="MN:Mat4x4MulXYZ"$() change to 3x3?
@@ -311,7 +307,7 @@ $FG,5$$TX+CX,"Committee Needed"$$FG$
 
 * Note: We will never put multiple $LK,"Keyboard Tables",A="FI:::/Kernel/SerialDev/Keyboard.TC"$.  Each country must make their own version of TempleOS.  The $LK,"Intel Factory ROM",A="FF:::/Doc/Demands.DD,English"$ will have just English.  Our $LK,"Charter",A="FI:::/Doc/Charter.DD"$ bans multiple country or architectures in the same version.
 
-* 12 border chars in scrn font codes 0x02-0x0D.  $LK,"TextBorder",A="MN:TextBorder"$() $LK,"RawDr",A="MN:RawDr"$() $LK,"::/Demo/Games/CharDemo.TC"$. LineFeed shows-up in $FG,2$<CTRL-m>$FG$ PersonalMenu.
+* 12 border chars in scrn font codes 0x02-0x0D.  $LK,"TextBorder",A="MN:TextBorder"$() $LK,"RawDr",A="MN:RawDr"$() . LineFeed shows-up in $FG,2$<CTRL-m>$FG$ PersonalMenu.
 
 * Super-simple high speed serial needs flow control.  $FG,2$<CTRL-s>$FG$ and $FG,2$<CTRL-q>$FG$?
 
@@ -374,7 +370,7 @@ $ID,-5$
 
 
 $FG,5$$TX+CX,"Test"$$FG$
-* $LK,"SpriteBitMap",A="FI:::/Adam/Gr/SpriteBitMap.TC"$: Grabscroll? 
+* $LK,"SpriteBitMap",A="FI:::/Anokos/Gr/SpriteBitMap.TC"$: Grabscroll? 
 
 * $LK,"DrvMap",A="MN:DrvMap"$() in $LK,"MountFile",A="MN:MountFile"$().
 

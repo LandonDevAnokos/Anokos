@@ -13,36 +13,6 @@ It's a kayak, not a Titanic -- it will crash if you do something wrong.  You qui
 
 Conventional thinking is "failure is not an option" for general purpose operating systems.  Since this OS is used in addition to Windows or Linux, however, failure is an option -- just use Windows or Linux if you can't do something.  I cherry-pick what it will and won't do, to make it maximally beautiful.  The following applications more or less form a basis that spans the range of use that TempleOS is intended for:
 
-$LK,"/Demo/Games/BattleLines.TC",A="FI:::/Demo/Games/BattleLines.TC"$
-$LK,"/Demo/Games/BigGuns.TC",A="FI:::/Demo/Games/BigGuns.TC"$
-$LK,"/Demo/Games/BlackDiamond.TC",A="FI:::/Demo/Games/BlackDiamond.TC"$
-$LK,"/Demo/Games/BomberGolf.TC",A="FI:::/Demo/Games/BomberGolf.TC"$
-$LK,"/Demo/Games/CastleFrankenstein.TC",A="FI:::/Demo/Games/CastleFrankenstein.TC"$
-$LK,"/Demo/Games/CharDemo.TC",A="FI:::/Demo/Games/CharDemo.TC"$
-$LK,"/Demo/Games/CircleTrace.TC",A="FI:::/Demo/Games/CircleTrace.TC"$
-$LK,"/Demo/Games/Collision.TC",A="FI:::/Demo/Games/Collision.TC"$
-$LK,"/Demo/Games/Digits.TC",A="FI:::/Demo/Games/Digits.TC"$
-$LK,"/Demo/Games/DunGen.TC",A="FI:::/Demo/Games/DunGen.TC"$
-$LK,"/Demo/Games/Talons.TC",A="FI:::/Demo/Games/Talons.TC"$
-$LK,"/Demo/Games/ElephantWalk.TC",A="FI:::/Demo/Games/ElephantWalk.TC"$
-$LK,"/Demo/Games/FlapBat.TC",A="FI:::/Demo/Games/FlapBat.TC"$
-$LK,"/Demo/Games/FlatTops.TC",A="FI:::/Demo/Games/FlatTops.TC"$
-$LK,"/Demo/Games/Halogen.TC",A="FI:::/Demo/Games/Halogen.TC"$
-$LK,"/Demo/Games/MassSpring.TC",A="FI:::/Demo/Games/MassSpring.TC"$
-$LK,"/Demo/Games/Maze.TC",A="FI:::/Demo/Games/Maze.TC"$
-$LK,"/Demo/Games/RainDrops.TC",A="FI:::/Demo/Games/RainDrops.TC"$
-$LK,"/Demo/Games/RawHide.TC",A="FI:::/Demo/Games/RawHide.TC"$
-$LK,"/Demo/Games/Rocket.TC",A="FI:::/Demo/Games/Rocket.TC"$
-$LK,"/Demo/Games/RocketScience.TC",A="FI:::/Demo/Games/RocketScience.TC"$
-$LK,"/Demo/Games/Squirt.TC",A="FI:::/Demo/Games/Squirt.TC"$
-$LK,"/Demo/Games/TheDead.TC",A="FI:::/Demo/Games/TheDead.TC"$
-$LK,"/Demo/Games/TicTacToe.TC",A="FI:::/Demo/Games/TicTacToe.TC"$
-$LK,"/Demo/Games/TreeCheckers.TC",A="FI:::/Demo/Games/TreeCheckers.TC"$
-$LK,"/Demo/Games/Varoom.TC",A="FI:::/Demo/Games/Varoom.TC"$
-$LK,"/Demo/Games/Wenceslas.TC",A="FI:::/Demo/Games/Wenceslas.TC"$
-$LK,"/Demo/Games/Whap.TC",A="FI:::/Demo/Games/Whap.TC"$
-$LK,"/Demo/Games/Zing.TC",A="FI:::/Demo/Games/Zing.TC"$
-$LK,"/Demo/Games/ZoneOut.TC",A="FI:::/Demo/Games/ZoneOut.TC"$
 $LK,"/Apps/Psalmody/Examples/childish.TC",A="FI:::/Apps/Psalmody/Examples/childish.TC"$
 $LK,"/Apps/Psalmody/Examples/night.TC",A="FI:::/Apps/Psalmody/Examples/night.TC"$
 $LK,"/Apps/Psalmody/Examples/prosper.TC",A="FI:::/Apps/Psalmody/Examples/prosper.TC"$

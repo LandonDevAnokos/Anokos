@@ -86,7 +86,7 @@ $ID,-5$
 
 * I don't use $FG,2$U0 *$FG$ because the size is zero for ptr arithmetic.
 
-* Use $FG,2$$LK,"CH_SHIFT_SPACE",A="MN:CH_SHIFT_SPACE"$$FG$ for spaces in quotes in source code because I run $LK,"Spaces-to-Tabs",A="FF:::/Adam/Opt/Utils/StrUtils.TC,S2T"$ on source code.
+* Use $FG,2$$LK,"CH_SHIFT_SPACE",A="MN:CH_SHIFT_SPACE"$$FG$ for spaces in quotes in source code because I run $LK,"Spaces-to-Tabs",A="FF:::/Anokos/Opt/Utils/StrUtils.TC,S2T"$ on source code.
 
 * Do not use $FG,2$#if$FG$ or $FG,2$#ifdef$FG$
 
@@ -94,7 +94,7 @@ $ID,-5$
 
 $FG,5$$TX+CX,"Hash Sym Tables"$$FG$
 
-* See $LK,"::/Adam/AHash.TC"$ for examples of how the hash tables are set-up.  Basically, syms are placed into hash tables and child process hash tables are chained to parents.  This provides scopes for vars and functions.
+* See $LK,"::/Anokos/AHash.TC"$ for examples of how the hash tables are set-up.  Basically, syms are placed into hash tables and child process hash tables are chained to parents.  This provides scopes for vars and functions.
 
 * $FG,2$adam_task->hash_table$FG$ holds the $LK,"TerryC",A="FI:::/Doc/TerryC.DD"$ syms loaded in on start-up.
 

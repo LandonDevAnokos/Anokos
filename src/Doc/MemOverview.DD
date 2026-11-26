@@ -21,7 +21,7 @@ $FG,2$ 0x00$TX,"00007C00",D="DD_KERNEL"$- 0x00$TX,"00036AEF",D="DD_KERNEL_END"$$
 $ID,2$Kernel module, placed here by the boot-loader, $LK,"BOOT_RAM_BASE",A="MN:BOOT_RAM_BASE"$.
 $ID,-2$
 $FG,2$ 0x00$TX,"00096600",D="DD_BOOT_HIGH_LOC_DVD"$- 0x00$TX,"00096FFF",D="DD_BOOT_HIGH_LOC_DVD_END"$$FG$
-$ID,2$$FG$Boot block relocated here before loading the Kernel module, $LK,"BootDVD",A="FI:::/Adam/Opt/Boot/BootDVD.TC"$ & $LK,"BootHD",A="FI:::/Adam/Opt/Boot/BootHD.TC"$.
+$ID,2$$FG$Boot block relocated here before loading the Kernel module, $LK,"BootDVD",A="FI:::/Anokos/Opt/Boot/BootDVD.TC"$ & $LK,"BootHD",A="FI:::/Anokos/Opt/Boot/BootHD.TC"$.
 $ID,-2$
 $FG,2$ 0x00$TX,"00097000",D="DD_MP_VECT"$- 0x00$TX,"00097030",D="DD_MP_VECT_END"$$FG$ Multicore start-up vect code, $LK,"MPN_VECT",A="MN:MPN_VECT"$.
 $FG,2$~0x000009F000- 0x000009FFFF$FG$ Extended BIOS data area.

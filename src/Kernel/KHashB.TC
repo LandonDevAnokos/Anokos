@@ -204,7 +204,7 @@ I64 HashLstAdd(U8 *lst,I64 type,CHashTable *table)
 }
 
 I64 HashDefineLstAdd(U8 *dname,I64 type,CHashTable *table)
-{//Add define list to a hash table. See $LK,"::/Adam/DolDoc/DocInit.TC",A="FF:::/Adam/DolDoc/DocInit.TC,HashDefineLstAdd"$.
+{//Add define list to a hash table. See $LK,"::/Anokos/DolDoc/DocInit.TC",A="FF:::/Anokos/DolDoc/DocInit.TC,HashDefineLstAdd"$.
   CHashDefineStr *tmph;
   if (tmph=HashFind(dname,Fs->hash_table,HTT_DEFINE_STR))
     return HashLstAdd(tmph->data,type,table);

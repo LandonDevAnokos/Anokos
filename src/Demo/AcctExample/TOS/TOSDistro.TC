@@ -108,14 +108,14 @@ U0 DbgDistroFilePrep()
 
   Copy("C:/Home/Sup1/Sup1Distro/DbgStartOS.TC.Z","A:/StartOS.TC.Z");
 
-  DirMk("A:/Adam");
-  Copy("C:/Home/Sup1/Sup1Distro/DbgMakeAdam.TC.Z","A:/Adam/MakeAdam.TC.Z");
-  Copy("C:/Home/Sup1/Sup1Distro/DbgMount.TC.Z","A:/Adam");
-  Copy("C:/Adam/AExts.TC.Z",	"A:/Adam");
-  Copy("C:/Adam/AMath.TC.Z",	"A:/Adam");
-  Copy("C:/Adam/Training.TC.Z","A:/Adam");
-  Copy("C:/Adam/AMem.TC.Z",	"A:/Adam");
-  Copy("C:/Adam/TaskRep.TC.Z",	"A:/Adam");
+  DirMk("A:/Anokos");
+  Copy("C:/Home/Sup1/Sup1Distro/DbgMakeAdam.TC.Z","A:/Anokos/MakeAnokos.TC.Z");
+  Copy("C:/Home/Sup1/Sup1Distro/DbgMount.TC.Z","A:/Anokos");
+  Copy("C:/Anokos/AExts.TC.Z",	"A:/Anokos");
+  Copy("C:/Anokos/AMath.TC.Z",	"A:/Anokos");
+  Copy("C:/Anokos/Training.TC.Z","A:/Anokos");
+  Copy("C:/Anokos/AMem.TC.Z",	"A:/Anokos");
+  Copy("C:/Anokos/TaskRep.TC.Z",	"A:/Anokos");
 
   FileWrite("C:" CFG_DBG_DISTRO_FILE,
 	bd->RAM_dsk,(bd->max_blk+1)<<BLK_SIZE_BITS);
@@ -160,12 +160,11 @@ U0 LiteDistroPrep()
   DirMk(TOS_DISTRO_DIR "/Home");
   DelTree(TOS_DISTRO_DIR "/Apps");
   DelTree(TOS_DISTRO_DIR "/Demo");
-  Copy(TOS_DISTRO_DIR "/Demo/Games/Talons.TC.Z",TOS_DISTRO_DIR "/Home");
   Del(TOS_DISTRO_DIR "/" KERNEL_BIN_C);
   Del(TOS_DISTRO_DIR BOOT_DIR "/OldMBR.BIN.C");
   Del(TOS_DISTRO_DIR BOOT_DIR "/BootMHD2.BIN.C");
-  Del(TOS_DISTRO_DIR "/Adam/AutoComplete/ACDefs.DATA.Z");
-  Del(TOS_DISTRO_DIR "/Adam/AutoComplete/ACWords.DATA.Z");
+  Del(TOS_DISTRO_DIR "/Anokos/AutoComplete/ACDefs.DATA.Z");
+  Del(TOS_DISTRO_DIR "/Anokos/AutoComplete/ACWords.DATA.Z");
   Del(TOS_DISTRO_DIR "/Misc/Bible.TXT.Z");
 }
 U0 MakeLiteDistro()
@@ -243,12 +242,12 @@ I64 UpdateLineCnts()
 
   DocMax;
   DocClear;
-  res=LineRep("C:/*","-r")+LineRep("C:/Adam/*")+
+  res=LineRep("C:/*","-r")+LineRep("C:/Anokos/*")+
 	LineRep("C:/Compiler/*","-S+$$")+LineRep("C:/Kernel/*");
   CopyTree("B:/TOS/TOS","C:/Home");
   DelTree("B:/TOS/TOS");
 
-  DocTreeFWrite("C:/Adam/ADefine.TC.Z","LineRep",
+  DocTreeFWrite("C:/Anokos/ADefine.TC.Z","LineRep",
 	"DefinePrint(\"DD_TEMPLEOS_LOC\",\"%,d\");\n",res);
   DefinePrint("DD_TEMPLEOS_LOC","%,d",res);
 

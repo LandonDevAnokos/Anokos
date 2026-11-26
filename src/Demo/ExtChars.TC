@@ -29,7 +29,7 @@ U0 SrcExample()
 }
 
 SrcExample;
-//See $LK,"::/Demo/ScrnCodes.TC"$, $LK,"::/Demo/Graphics/CharAnimation.TC"$,
-//$LK,"::/Demo/Games/CharDemo.TC"$ and $LK,"::/Demo/Graphics/FontEd.TC"$.
+//See $LK,"::/Demo/ScrnCodes.TC"$, $LK,"::/Demo/Graphics/CharAnimation.TC"$
+//and $LK,"::/Demo/Graphics/FontEd.TC"$.
 
 //See $LK,"char_bmp_alpha",A="MN:char_bmp_alpha"$ and $LK,"char_bmp_alpha_numeric",A="MN:char_bmp_alpha_numeric"$.

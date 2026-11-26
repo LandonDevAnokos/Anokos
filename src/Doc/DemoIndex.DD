@@ -13,9 +13,7 @@ $LK,"::/Demo/Graphics/Lines.TC"$
 $LK,"::/Demo/Graphics/SunMoon.TC"$
 $LK,"::/Demo/Graphics/LowPassFilter.TC"$
 $LK,"::/Demo/Graphics/MathAudioDemo.TC"$
-$LK,"::/Demo/Games/TicTacToe.TC"$
 $LK,"::/Demo/Graphics/SpritePlot.TC"$
-$LK,"::/Demo/Games/ElephantWalk.TC"$
 $LK,"::/Demo/Graphics/SpritePut.TC"$
 $LK,"::/Demo/Graphics/SpritePutExt.TC"$
 $LK,"::/Demo/Snd/ASCIIOrgan.TC"$
@@ -28,7 +26,6 @@ $LK,"::/Demo/KeyBitMap.TC"$
 $LK,"::/Demo/Graphics/WinZBuf.TC"$
 $LK,"::/Demo/Graphics/Elephant.TC"$
 $LK,"::/Demo/Graphics/WallPaperFish.TC"$ //Press SHIFT-F5 to Adam Include
-$LK,"::/Demo/Games/Digits.TC"$
 $LK,"::/Demo/Progress.TC"$ //has some ASM, just ignore
 $LK,"::/Demo/Graphics/Symmetry.TC"$
 $LK,"::/Demo/Graphics/Blot.TC"$
@@ -36,15 +33,9 @@ $LK,"::/Demo/Graphics/ScrnCapture.TC"$
 $LK,"::/Demo/Graphics/EdSprite.TC"$
 $LK,"::/Demo/PullDownMenu.TC"$
 $LK,"::/Demo/Graphics/Palette.TC"$
-$LK,"::/Demo/Games/CircleTrace.TC"$
-$LK,"::/Demo/Games/Halogen.TC"$
-$LK,"::/Demo/Games/TheDead.TC"$
-$LK,"::/Demo/Games/RainDrops.TC"$
 $LK,"::/Demo/Snd/MorseCode.TC"$
-$MA-X+PU,"::/Demo/Games/Stadium",LM="Cd(\"::/Demo/Games/Stadium\");Dir;View;\n"$
 $LK,"::/Demo/Graphics/Lattice.TC"$
 $LK,"::/Demo/Graphics/Collision.TC"$
-$LK,"::/Demo/Games/BlackDiamond.TC"$
 $ID,-2$$TR,"Games: Intermediate"$
 $ID,2$$LK,"::/Demo/Graphics/Box.TC"$
 $LK,"::/Demo/Graphics/Pick.TC"$
@@ -54,12 +45,9 @@ $LK,"::/Demo/Graphics/Extents.TC"$
 $LK,"::/Demo/Graphics/SpritePlot3D.TC"$
 $LK,"::/Demo/Graphics/Balloon.TC"$
 $LK,"::/Demo/Graphics/RotateTank.TC"$
-$LK,"::/Demo/Games/Wenceslas.TC"$
 $LK,"::/Demo/ScrnCodes.TC"$
 $LK,"::/Demo/Graphics/PanText.TC"$
 $LK,"::/Demo/Graphics/CharAnimation.TC"$
-$LK,"::/Demo/Games/Maze.TC"$
-$LK,"::/Demo/Games/CharDemo.TC"$
 $LK,"::/Demo/Graphics/FontEd.TC"$
 $LK,"::/Demo/ExtChars.TC"$
 $LK,"::/Demo/TimeIns.TC"$
@@ -71,9 +59,7 @@ $LK,"::/Demo/Graphics/PredatorPrey.TC"$
 $LK,"::/Demo/Graphics/Cartesian.TC"$
 $LK,"::/Demo/Graphics/Hanoi.TC"$
 $LK,"::/Demo/Graphics/Life.TC"$
-$LK,"::/Demo/Games/Zing.TC"$
 $LK,"::/Demo/Graphics/Grid.TC"$
-$LK,"::/Demo/Games/TreeCheckers.TC"$
 $LK,"::/Demo/MultiCore/Palindrome.TC"$
 $LK,"::/Demo/MultiCore/MPAdd.TC"$
 $LK,"::/Demo/MultiCore/Lock.TC"$
@@ -81,42 +67,19 @@ $LK,"::/Demo/Graphics/Slider.TC"$
 $LK,"::/Demo/Graphics/WallPaperCtrl.TC"$ //Press SHIFT-F5 to Adam Include
 $LK,"::/Demo/Graphics/ScrollBars.TC"$
 $LK,"::/Demo/RegistryDemo.TC"$
-$LK,"::/Demo/Games/FlapBat.TC"$
-$LK,"::/Demo/Games/BattleLines.TC"$
-$LK,"::/Demo/Games/BigGuns.TC"$
-$LK,"::/Demo/Games/FlatTops.TC"$
-$LK,"::/Demo/Games/RawHide.TC"$
-$LK,"::/Demo/Games/DunGen.TC"$
-$MA-X+PU,"::/Apps/Titanium",LM="Cd(\"::/Apps/Titanium\");Dir;View;\n"$
-$LK,"::/Demo/Games/Collision.TC"$
 $ID,-2$$TR,"Games: Advanced"$
 $ID,2$$LK,"::/Demo/MultiCore/LoadTest.TC"$
 $LK,"::/Demo/MultiCore/Primes.TC"$
 $LK,"::/Demo/MultiCore/MPRadix.TC"$
 $LK,"::/Demo/MultiCore/Interrupts.TC"$
-$LK,"::/Demo/Games/Varoom.TC"$
 $LK,"::/Demo/Graphics/Shading.TC"$
 $LK,"::/Demo/Graphics/Transform.TC"$
-$LK,"::/Demo/Games/BomberGolf.TC"$
 $LK,"::/Demo/Graphics/Shadow.TC"$
 $LK,"::/Demo/Graphics/Pick3D.TC"$
-$MA-X+PU,"::/Apps/ToTheFront",LM="Cd(\"::/Apps/ToTheFront\");Dir;View;\n"$
 $LK,"::/Demo/Graphics/SpriteText.TC"$
 $LK,"::/Demo/Graphics/SpriteRaw.TC"$
 $MA-X+PU,"::/Apps/GrModels",LM="Cd(\"::/Apps/GrModels\");Dir;View;\n"$
-$MA-X+PU,"::/Apps/KeepAway",LM="Cd(\"::/Apps/KeepAway\");Dir;View;\n"$
-$LK,"::/Demo/Games/Rocket.TC"$
-$LK,"::/Demo/Games/RocketScience.TC"$
-$LK,"::/Demo/Games/MassSpring.TC"$
 $LK,"::/Demo/Graphics/LightTable.TC"$
-$LK,"::/Demo/Games/Whap.TC"$
-$LK,"::/Demo/Games/Squirt.TC"$
-$MA-X+PU,"::/Apps/X-Caliber",LM="Cd(\"::/Apps/X-Caliber\");Dir;View;\n"$
-$LK,"::/Demo/Games/ZoneOut.TC"$
-$LK,"::/Demo/Games/CastleFrankenstein.TC"$
-$LK,"::/Demo/Games/Talons.TC"$
-$MA-X+PU,"::/Apps/Strut",LM="Cd(\"::/Apps/Strut\");Dir;View;\n"$
-$MA-X+PU,"::/Apps/Span",LM="Cd(\"::/Apps/Span\");Dir;View;\n"$
 $MA-X+PU,"::/Apps/Psalmody",LM="Cd(\"::/Apps/Psalmody\");Dir;View;\n"$
 $ID,-2$$TR,"Non-Game"$
 $ID,2$$LK,"::/Misc/DoDistro.TC"$
@@ -145,9 +108,7 @@ $LK,"::/Demo/Graphics/PoleZeros.TC"$
 $LK,"::/Demo/WebLogDemo/WebLogRep.TC"$
 $LK,"::/Demo/WebLogDemo/WebLogScramble.TC"$
 $MA-X+PU,"::/Apps/TimeClock",LM="Cd(\"::/Apps/TimeClock\");Dir;View;\n"$
-$MA-X+PU,"::/Apps/Logic",LM="Cd(\"::/Apps/Logic\");Dir;View;\n"$
 $MA-X+PU,"::/Demo/Lectures",LM="Cd(\"::/Demo/Lectures\");Dir;View;\n"$
-$MA-X+PU,"::/Apps/Budget",LM="Cd(\"::/Apps/Budget\");Dir;View;\n"$
 $ID,-2$$TR,"TempleOS Specific"$
 $ID,2$$MA-X+PU,"::/Demo/InFile",LM="Cd(\"::/Demo/InFile\");Dir;View;\n"$
 $LK,"::/Demo/Print.TC"$
@@ -190,5 +151,5 @@ $LK,"::/Demo/Asm/AsmAndC2.TC"$
 $LK,"::/Demo/Asm/AsmAndC3.TC"$
 $LK,"::/Demo/GlblVars.TC"$
 $LK,"::/Misc/OSTestSuite.TC"$
-$MA-X+PU,"::/Adam",LM="Cd(\"::/Adam\");Dir;View;\n"$
+$MA-X+PU,"::/Anokos",LM="Cd(\"::/Anokos\");Dir;View;\n"$
 $ID,-2$

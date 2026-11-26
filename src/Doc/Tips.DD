@@ -121,7 +121,7 @@ $FG,2$Merge(\"C:/*\",\"D:/*\",\"+r+d\");$FG$ to check my changes.
 
 * You can delete the $FG,4$~/Registry.TC.Z$FG$ file.  The policy is that deleting it will restore defaults.  It is a text doc, if you want to edit it.  Be careful of tree indentations.
 
-* Study $LK,"::/Adam/Opt/Utils/MemRep.TC"$ and $LK,"WallPaper",A="MN:WallPaper"$() to learn how the system resources are put together.
+* Study $LK,"::/Anokos/Opt/Utils/MemRep.TC"$ and $LK,"WallPaper",A="MN:WallPaper"$() to learn how the system resources are put together.
 
 * The editor's sel-text mechanism allows for disjoint portions of sel text.  This is a feature, not a bug -- you can cut-and-paste disjoint text.
 

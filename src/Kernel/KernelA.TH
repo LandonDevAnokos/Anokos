@@ -1508,9 +1508,9 @@ public class CAutoCompleteGlbls
 };
 
 #help_index "AutoComplete/Dictionary"
-#define ACD_WORD_FILENAME	"/Adam/AutoComplete/ACWords.DATA.Z"
-#define ACD_DEF_FILENAME	"/Adam/AutoComplete/ACDefs.DATA"
-#define ACD_DEF_FILENAME_Z	"/Adam/AutoComplete/ACDefs.DATA.Z"
+#define ACD_WORD_FILENAME	"/Anokos/AutoComplete/ACWords.DATA.Z"
+#define ACD_DEF_FILENAME	"/Anokos/AutoComplete/ACDefs.DATA"
+#define ACD_DEF_FILENAME_Z	"/Anokos/AutoComplete/ACDefs.DATA.Z"
 
 #define ACD_H1			0
 #define ACD_H1_END		1
@@ -3604,7 +3604,6 @@ public class CVbeGlbls
 #define DCF_SYMMETRY		0x200
 
 //Must be used with DCF_SYMMETRY set also.
-//See $LK,"::/Demo/Games/BigGuns.TC"$
 #define DCF_JUST_MIRROR		0x400
 
 #define DCF_LOCATE_NEAREST	0x800

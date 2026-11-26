@@ -45,7 +45,7 @@ KEYWORDS = {
     "goto", "try", "catch", "throw", "sizeof", "offset", "class", "union", "asm",
     "start", "end", "defined", "lastclass", "TRUE", "FALSE", "NULL", "ON", "OFF",
 } | MODIFIERS
-CORE_DIRS = ("Kernel", "Compiler", "Adam", "Anokos", "")
+CORE_DIRS = ("Kernel", "Compiler", "Anokos", "")
 
 KIND_FILE, KIND_FUNC, KIND_GLOBAL, KIND_CLASS, KIND_DEFINE, KIND_ASM = range(6)
 KIND_NAMES = ["file", "function", "global", "class", "define", "asm"]

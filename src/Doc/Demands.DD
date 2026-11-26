@@ -6,7 +6,7 @@ $HC,"<object width=\"640\" height=\"520\"><param name=\"movie\" value=\"http://w
 
 * Windows, Linux and VMware (because of mounted drives) must support $LK,"RedSea",A="FI:::/Doc/RedSea.DD"$ file system when mounting partition, so I can get rid of 1,000 lines of redundant, blemished code -- FAT32.  God's temple must be perfect.  Redundant code for multiple file systems is bad and imperfect.  For this operating system, we want low line count.  More than one driver for the same type of device is also bad.
 
-See $LK,"::/Kernel/BlkDev/FileSysRedSea.TC"$ and $LK,"::/Adam/Opt/Boot/DskISORedSea.TC"$.
+See $LK,"::/Kernel/BlkDev/FileSysRedSea.TC"$ and $LK,"::/Anokos/Opt/Boot/DskISORedSea.TC"$.
 
 $LK,"::/Kernel/BlkDev/FileSysFAT.TC"$	:974 lines for FAT32 gets eliminated.
 $LK,"::/Kernel/BlkDev/DskClus.TC"$	:152 All the clus operations become blk.

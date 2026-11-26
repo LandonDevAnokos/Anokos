@@ -40,9 +40,8 @@ Planned milestones, in order (details in [ROADMAP.md](ROADMAP.md)):
 | Directory | What it is |
 | --- | --- |
 | `Kernel/` | Core kernel: boot, VBE framebuffer, memory, scheduler, interrupts, block devices, RedSea/FAT32 filesystems |
-| `Anokos/` | The Anokos system layer: the full-screen terminal (`Term.TC`) |
 | `Compiler/` | The TerryC JIT/AOT compiler and assembler |
-| `Adam/` | The "Adam" system layer: window manager, DolDoc, graphics, sound, autocomplete, GUI controls |
+| `Anokos/` | The Anokos system layer, loaded at boot: the full-screen terminal (`Term.TC`), DolDoc documents, graphics, sound, autocomplete, GUI controls and the window manager. Formerly TempleOS's `Adam/`. |
 | `Apps/` | Bundled applications |
 | `Demo/` | Example and demo programs |
 | `Doc/` | System documentation (DolDoc format) |
@@ -103,7 +102,7 @@ kernel are bootstrapped in a VM:
    Add `--update-src` to copy the result into `src/0000Boot/` and `src/Kernel/Kernel.MAP`.
 2. **Stage 2** (`anokos_build.py iso`): writes `build/Anokos.ISO` from `src/` with the new kernel.
 
-Everything outside `Kernel/` and `Compiler/` (the Anokos layer, Adam, apps) is compiled
+Everything outside `Kernel/` and `Compiler/` (the Anokos layer and apps) is compiled
 just-in-time at boot, so changes there only need stage 2.
 
 ### The Anokos terminal
