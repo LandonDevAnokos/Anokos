@@ -26,6 +26,9 @@ U0 BlkPoolInit(CBlkPool *bp,I64 pags)
   BlkPoolAdd(bp,m,num);
 }
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/BlkPool"
+#else
 U0 BlkPoolsInit()
 {
   I64 i,total,lo,hi,code_heap_limit;
@@ -71,3 +74,4 @@ U0 BlkPoolsInit()
   }
   LBts(&sys_run_level,RLf_FULL_HEAPS);
 }
+#endif

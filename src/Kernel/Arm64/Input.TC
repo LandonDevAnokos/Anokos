@@ -1,0 +1,13 @@
+//ARM64 stand-ins for the PS/2 $LK,"Keyboard",A="FI:::/Kernel/SerialDev/Keyboard.TC"$ and $LK,"Mouse",A="FI:::/Kernel/SerialDev/Mouse.TC"$ drivers, which
+//are x86 port I/O. ARM64 input (the serial console, virtio-input on QEMU,
+//USB on a Raspberry Pi) will feed the same key and mouse message queues.
+
+U0 KbdMsHndlr(Bool poll_kbd,Bool poll_ms)
+{
+  no_warn poll_kbd,poll_ms;
+}
+
+I64 KbdMsgsQue()
+{//Returns the number of key messages queued: none yet on ARM64.
+  return 0;
+}

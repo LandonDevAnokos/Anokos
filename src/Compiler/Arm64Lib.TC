@@ -350,7 +350,9 @@ U32 A64Clz(I64 d,I64 n)  {return 0xDAC01000|(n<<5)|d;}
 U32 A64Rbit(I64 d,I64 n) {return 0xDAC00000|(n<<5)|d;}
 U32 A64Rev(I64 d,I64 n)  {return 0xDAC00C00|(n<<5)|d;}
 
-//Exclusive byte access, for the locked bit ops (LBts etc).
+//Exclusive access, for the locked bit ops (LBts etc).
+U32 A64Ldaxr(I64 t,I64 n,Bool is64) {if (is64) return 0xC85FFC00|(n<<5)|t; return 0x885FFC00|(n<<5)|t;}
+U32 A64Stlxr(I64 s,I64 t,I64 n,Bool is64) {if (is64) return 0xC800FC00|(s<<16)|(n<<5)|t; return 0x8800FC00|(s<<16)|(n<<5)|t;}
 U32 A64Ldaxrb(I64 t,I64 n)	{return 0x085FFC00|(n<<5)|t;}
 U32 A64Stlxrb(I64 s,I64 t,I64 n){return 0x0800FC00|(s<<16)|(n<<5)|t;}
 

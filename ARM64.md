@@ -9,17 +9,26 @@ and only the x86-specific parts get ARM64 versions.
 
 | Part | State |
 | --- | --- |
-| Compiler: ARM64 code generator (`src/Compiler/BackArm64.TC`) | Working: integer, pointer, F64, switch, varargs and bit operations; self test passes |
-| Compiler: ARM64 assembler for `asm {}` blocks (`src/Compiler/AsmArm64.TC`) | Working: integer, load/store, branches, system registers, barriers, FP |
+| Compiler: ARM64 code generator (`src/Compiler/BackArm64.TC`) | Working: integer, pointer, F64 (incl. `Sin`/`Cos`/`Tan`/`ATan`/`` ` ``), switch, varargs, bit operations, in-function asm |
+| Compiler: ARM64 assembler for `asm {}` blocks (`src/Compiler/AsmArm64.TC`) | Working: integer, load/store, branches, system registers, barriers, exclusives, FP |
 | Compiler: ARM64 boot image output (`Cmp()` with `OPTf_ARM64`) | Working |
-| Boot: Image header, EL3/EL2 to EL1, self-relocation, MMU, vectors (`src/Kernel/Arm64/KStart.TC`) | Working on QEMU virt, raspi3b, raspi4b |
-| Kernel asm converted: KUtils, KMathA, string asm from StrA | Done (see the checklist) |
-| Rest of the kernel (memory, tasks, interrupts, devices, KMain) | Not started; see the checklist |
+| Boot: Image header, EL3/EL2 to EL1, relocation, MMU, vectors (`Arm64/KStart.TC`) | Working on QEMU virt, raspi3b, raspi4b |
+| Memory: block pools, heaps, MAlloc/Free, RAM from the device tree or Pi mailbox | Working |
+| Tasks: Adam task, Spawn, Yield/Sleep, task exit, try/catch/throw | Working (one core) |
+| Kernel files in the ARM64 build | All of `Kernel.PRJ` except KInts, PCIBIOS and the PS/2 and IDE drivers (see the checklist) |
+| Interrupts, timer IRQ, framebuffer, storage, input, more cores | Not started |
 | Compiler running *on* ARM64 (JIT) | Not started |
 
-The ARM64 kernel boots to a serial console on QEMU's `virt` machine and on the emulated Raspberry
-Pi 3 and 4. It prints the board, CPU and boot details, runs a self test of the ARM64 code
-generator, and starts a small serial monitor (`h` help, `t` self test, `r` reboot, `o` power off).
+The ARM64 kernel boots on QEMU's `virt` machine and on the emulated Raspberry Pi 3 and 4. It finds
+RAM, sets up the heaps and the Adam task, and runs its tests:
+- a code generator self test;
+- MAlloc/Free;
+- try/catch;
+- two spawned tasks that print, sleep and exit.
+
+Then it starts a small serial monitor (`h` help, `k` tasks, `m` memory, `t` self test, `r` reboot,
+`o` power off). Kernel `Print` output (and anything else through `RawPutChar`) goes to the serial
+console.
 
 ## Building and running
 
@@ -62,8 +71,9 @@ compile to ARM64.
 - **Only module code is ARM64.** During an AOT compile the compiler also JIT-compiles small
   expressions and runs them on the build machine (`#exe`, constant expressions, asm operands).
   Those stay x86-64. `COCCompile(...,target=TRUE)` marks the code that goes into the module.
-- **Assembler.** `asm {}` blocks use ARM64 syntax when `OPTf_ARM64` is on, with three differences
-  from standard ARM64 syntax:
+- **Assembler.** `asm {}` blocks use ARM64 syntax when `OPTf_ARM64` is on. TerryC functions are
+  referenced as `&Name` when already defined, as in x86 asm. It differs from standard ARM64
+  syntax in three ways:
   - immediates have no `#`, because TerryC uses `#` for directives: `ADD SP,SP,16`, `LDR X1,[X2,8]`;
   - `B.EQ` and `BEQ` are both accepted;
   - `MOV Xd,imm64` expands to MOVZ/MOVN/MOVK as needed.
@@ -90,6 +100,14 @@ It's the x86-64 TerryC convention, so the frame layout the optimizer computes st
   checking.
 - Compiled statement blocks (and `switch` sub-blocks) return by popping their return address,
   like x86 `RET`. `Call()` handles both kinds.
+
+Fs (the current `CTask`) is in TPIDR_EL1 and Gs (the current `CCPU`) in TPIDRRO_EL0. The CTask
+register slots hold the ARM64 registers the x86 ones map to. `rflags` keeps the x86 format, with
+bit 9 meaning interrupts are on, so shared code that saves and restores flags works unchanged:
+`GetRFlags`/`SetRFlags` translate to and from DAIF, and inside functions the x86 one-liners `CLI`,
+`STI`, `PUSHFD`, `POPFD`, `PAUSE` and `HLT` assemble to their ARM64 equivalents. Calls to symbols
+x86 imports at load time (from the compiler, for example) go to `ArmImportTrap`, which reports the
+caller.
 
 TerryC classes are packed, so TerryC code makes unaligned accesses. Those need Normal memory, so
 `KStart` turns the MMU on with an identity map before any TerryC code runs.
@@ -145,44 +163,57 @@ To add a board:
 
 ## Converting the kernel: checklist
 
-`src/Kernel/KernelArm64.PRJ` follows the include order of `Kernel.PRJ`, using a file from
-`src/Kernel/Arm64/` wherever the x86 file can't be used. Shared files go in unchanged once their
-dependencies are in. TerryC has `#ifdef`/`#ifndef` but no `#else`, so a shared file with a little
-x86 code wraps it in `#ifndef ARCH_ARM64` and puts the ARM64 version under `#ifdef ARCH_ARM64`.
+`src/Kernel/KernelArm64.PRJ` has the same files in the same order as `Kernel.PRJ`.
+`#define ARCH_ARM64` selects the ARM64 code. Shared files keep their TerryC. Their x86-only parts are
+wrapped like this:
 
-| x86 file | What's x86-specific | ARM64 |
+```
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/<file>"   //or a few lines inline
+#else
+...x86 asm or port I/O...
+#endif
+```
+
+ARM64 asm replacements keep the x86 labels, so the `_extern` declarations stay as they are.
+
+| File | x86-specific | ARM64 |
 | --- | --- | --- |
-| KStart16/32/64 | real mode, VBE, GDT, paging, long mode | **Done:** `Arm64/KStart` |
-| KUtils | all asm | **Done:** `Arm64/KUtils` (port I/O traps; CPUID gives zeros) |
-| KMathA | x87 | **Done:** `Arm64/KMathA` + `Arm64/KMathB` |
-| StrA | asm block | **Partly done:** `Arm64/StrA` has the string routines; StrMatch, StrIMatch and the PUT_* helpers are still to port |
-| Mem/MAllocFree, Mem/PageTables, Mem/MemPhysical | asm, x86 page tables | to do: ARM64 page tables from the device tree |
-| KTask, Sched | context switch asm, FS/GS | to do: ARM64 context switch; Fs is TPIDR_EL1, Gs is TPIDRRO_EL0 |
-| KInts, KExcept | IDT, PIC/APIC | to do: vectors (started in KStart) + GIC (virt, Pi 4) / BCM2836 local intc (Pi 3) |
-| MultiProc | APIC IPIs | to do: PSCI CPU_ON (virt), spin tables (Pi) |
-| KHashA, Compress | asm | to do |
-| KDate, KMisc, Display, KMain | CMOS, PIT/HPET, VGA/VBE ports | to do: generic timer, PL031 RTC, ramfb/virtio-gpu (virt) and mailbox framebuffer (Pi) |
+| KStart16/32/64 | real mode, VBE, GDT, paging, long mode, fixed area | **Done:** `Arm64/KStart` (boot, data labels, `CSysFixedArea` in the image) and `Arm64/KMain` |
+| KUtils | asm | **Done:** `Arm64/KUtils` (port I/O traps; CPUID gives zeros) |
+| KMathA | x87 | **Done:** `Arm64/KMathA` + `Arm64/KMathSoft` |
+| StrA | asm | **Done:** `Arm64/StrA` (the PUT_* debug helpers are not ported) |
+| Sched | context switch asm | **Done:** `Arm64/Sched` (no Ctrl+Alt keys, breakpoints or FP state yet) |
+| Mem/MAllocFree | asm | **Done:** `Arm64/MAllocFree` (TerryC, same algorithm) |
+| Mem/PageTables, BlkPool, MemPhysical | x86 page tables, E820, 16 MiB area | **Done:** `Arm64/Mem` fills `MEM_E820` from the device tree or mailbox; `Arm64/BlkPool`; identity-mapped device memory |
+| KHashA | asm | **Done:** `Arm64/KHashA` (TerryC, same hash values) |
+| Compress | asm | **Done:** `Arm64/Compress` |
+| KExcept | try/catch asm | **Done:** `Arm64/KExcept` |
+| KTask | CallStkGrow asm, Spawn's start frame | **Done:** `CallStkGrow` doesn't grow the stack yet; tasks start via `ARM64_TASK_START` |
+| MultiProc | APIC, TSS, AP start-up | **Partly done:** single core; CPU structs, jobs and SpawnQue are shared |
+| KMisc, KDate, Display, KDbg | PIT, HPET, CMOS, VGA ports, CR2, `INT` | **Done:** generic timer for HPET, PL031 RTC (virt), serial `RawPutChar`, FAR_EL1, `ArmPanic` |
+| SerialDev/Keyboard, Mouse | PS/2 | to do: `Arm64/Input` has stand-ins; serial, virtio-input, USB |
+| BlkDev/DskATA, DskATAId | IDE | to do: `Arm64/Ata` has stand-ins; virtio-blk (virt), SD card (Pi) |
+| KInts | IDT, PIC | to do: GIC (virt, Pi 4) / BCM2836 local intc (Pi 3), generic timer IRQ |
 | PCIBIOS | BIOS32 | to do: PCIe ECAM from the device tree (milestone 2) |
-| SerialDev/Keyboard, Mouse | PS/2 ports | to do: virtio-input (virt), USB later (Pi) |
-| BlkDev/DskATA, DskATAId | IDE ports | to do: virtio-blk (virt), SD/EMMC (Pi) |
-| KGlbls, StrB, StrPrint, StrScan, KDataTypes, KHashB, KDefine, KDbg, KeyDev, QSort, Job, EdLite, FunSeg, BlkDev (file systems), KLoad | none found | shared; add as dependencies allow |
+| KMain | VBE, PIT, devices | **Partly done:** `Arm64/KMain`; framebuffer, interrupts and drives to do |
+| All other files | none | shared, in the ARM64 build |
 
 Compiler features still missing on ARM64:
 
-- `Sin`, `Cos`, `Tan`, `ATan` and the power operator as built-ins (`Exp`, `Ln`, `Pow` and `Arg`
-  already work);
-- `asm {}` blocks inside functions;
 - `interrupt` functions (use asm vectors);
-- `lock {}` on read-modify-write operators, which is not atomic yet. `LBts` and friends are atomic.
+- `lock {}` read-modify-write operators aren't atomic yet (`LBts` and friends are);
+- in-function asm that uses labels or addresses;
 - running the compiler itself on ARM64 (it needs its own asm converted and a JIT that emits ARM64).
 
 The suggested order:
 
-1. Memory and tasks, to get `MAlloc`, `Fs`/`Gs` and `Print` over serial.
-2. Interrupts and the timer.
-3. The framebuffer and the Anokos terminal.
+1. Interrupts and the timer IRQ.
+2. The framebuffer and the Anokos terminal.
+3. Serial/virtio input.
 4. Block devices and RedSea.
-5. The compiler on ARM64.
+5. More cores.
+6. The compiler on ARM64.
 
 ## QEMU on macOS 14
 

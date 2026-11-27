@@ -6,6 +6,7 @@ _extern ARM64_LOAD_BASE	U8 *arm64_load_base; //Where the loader put the image
 _extern ARM64_DTB	U8 *arm64_dtb;	//Device tree from the loader, or NULL
 _extern ARM64_LAYOUT	I64 arm64_layout; //$LK,"ARM64_LAYOUT_VIRT",A="MN:ARM64_LAYOUT_VIRT"$ etc.
 _extern ARM64_BOOT_EL	I64 arm64_boot_el; //Exception level the loader entered at
+_extern ARM64_IMAGE_SIZE I64 arm64_image_size; //Image plus its reserved area
 
 _extern _ARM_ESR	I64 ArmEsr();	//Exception syndrome
 _extern _ARM_FAR	I64 ArmFar();	//Fault address
@@ -19,6 +20,11 @@ _extern _ARM_CNTPCT	I64 ArmCntPct(); //Generic timer count
 _extern _ARM_WFI	U0 ArmWfi();	//Wait for interrupt
 _extern _ARM_DSB	U0 ArmDsb();	//Data synchronization barrier
 _extern _ARM_HVC	I64 ArmHvc(I64 fn,I64 a1=0,I64 a2=0,I64 a3=0);
+_extern _ARM_SET_FS	U0 ArmSetFs(CTask *task);
+_extern _ARM_SET_GS	U0 ArmSetGs(CCPU *c);
+_extern _ARM_SWITCH_STK	U0 ArmSwitchStk(U8 *sp,U0 (*fp)());
+_extern _ARM_DCACHE_FLUSH U0 ArmDCacheFlush(U8 *addr,I64 len);
+_extern ARM64_SYS_FIXED	CSysFixedArea arm64_sys_fixed; //See $LK,"SYS_FIXED_AREA",A="MN:SYS_FIXED_AREA"$
 _extern _ARM_SMC	I64 ArmSmc(I64 fn,I64 a1=0,I64 a2=0,I64 a3=0);
 
 //PSCI firmware calls (QEMU virt implements these)
@@ -42,6 +48,7 @@ public class CArmBoard
   U8	*periph_base;	//SoC peripheral window, NULL if none
   U8	*mbox_base;	//VideoCore mailbox (Raspberry Pi)
   Bool	has_psci;
+  U8	*rtc_base;	//PL031 real-time clock, NULL if none
 };
 
 #help_index ""

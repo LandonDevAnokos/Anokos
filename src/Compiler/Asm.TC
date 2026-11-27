@@ -1008,6 +1008,8 @@ U0 PrsAsmBlk(CCmpCtrl *cc,I64 cmp_flags)
 	    LexExcept(cc,"Syntax error at ");
 	}
       } else if (cc->hash_entry->type & HTT_OPCODE) {
+	if (Bt(&cc->opts,OPTf_ARM64))
+	  LexExcept(cc,"x86 instruction in ARM64 code at ");
 	tmpo=cc->hash_entry;
 	Lex(cc); //skip opcode
 	argcnt=0;

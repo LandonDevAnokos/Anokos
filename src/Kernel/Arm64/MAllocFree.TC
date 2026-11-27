@@ -1,0 +1,176 @@
+//ARM64 version of the asm in $LK,"Mem/MAllocFree",A="FI:::/Kernel/Mem/MAllocFree.TC"$: MAlloc, Free, MSize,
+//MSize2 and MHeapCtrl, written in TerryC with the same algorithm, data
+//structures and locking as the x86 asm. The original labels branch here,
+//so the _extern declarations in MAllocFree.TC are unchanged.
+
+U8 *ArmMAlloc(I64 size,CTask *mem_task=NULL)
+{//Throws 'OutMem'.
+  CHeapCtrl *hc;
+  CMemUnused *uum,*uum1;
+  CMemBlk *m;
+  I64 pags,chunk;
+  U8 *res;
+
+  if (!mem_task) mem_task=Fs;
+  hc=mem_task;
+//A CTask and a CHeapCtrl keep their signatures at the same offset.
+  if (mem_task->task_signature==TASK_SIGNATURE_VAL)
+    hc=mem_task->data_heap;
+  if (hc->hc_signature!=HEAP_CTRL_SIGNATURE_VAL) {
+    SysBadMAlloc(hc);
+    SysHlt;
+  }
+  size=(size+offset(CMemUsed.start)+7)&~7;
+  if (size<offset(CMemUsed.start))
+    size=offset(CMemUsed.start);
+
+  PUSHFD
+  CLI
+  while (LBts(&hc->locked_flags,HClf_LOCKED))
+    PAUSE
+
+  if (size>=MEM_HEAP_HASH_SIZE) {//Big allocation: whole pages
+    pags=(size+sizeof(CMemBlk)+MEM_PAG_SIZE-1)>>MEM_PAG_BITS;
+    if (!(m=MemPagTaskAlloc(pags,hc)))
+      goto ma_out_of_mem;
+    size=(m->pags<<MEM_PAG_BITS)-sizeof(CMemBlk);
+    uum=m(U8 *)+sizeof(CMemBlk);
+    goto ma_almost_done;
+  }
+  if (uum=hc->heap_hash[size>>3]) {
+    hc->heap_hash[size>>3]=uum->next;
+    goto ma_almost_done;
+  }
+
+//Little allocation: chunk off a piece of a free list chunk.
+  uum1=(&hc->malloc_free_lst)(U8 *)-offset(CMemUnused.next);
+ma_next:
+  if (!(uum=uum1->next)) {
+    pags=(size+16*MEM_PAG_SIZE-1)>>MEM_PAG_BITS;
+    if (!(m=MemPagTaskAlloc(pags,hc)))
+      goto ma_out_of_mem;
+    chunk=m->pags<<MEM_PAG_BITS;
+//Can it be combined with the last chunk? (These chunks are never freed.)
+    if (hc->last_mergable(U8 *)==m(U8 *)+chunk) {
+      m->pags+=hc->last_mergable->pags;
+      QueRem(hc->last_mergable);
+    }
+    hc->last_mergable=m;
+    uum=m(U8 *)+sizeof(CMemBlk);
+    uum1=(&hc->malloc_free_lst)(U8 *)-offset(CMemUnused.next);
+    uum->next=uum1->next;
+    uum->size=chunk-sizeof(CMemBlk);
+    uum1->next=uum;
+    goto ma_split;
+  }
+  if (uum->size<size) {
+    uum1=uum;
+    goto ma_next;
+  }
+  if (uum->size==size) {
+    uum1->next=uum->next;
+    goto ma_almost_done;
+  }
+ma_split:
+  uum->size-=size;
+  if (uum->size<sizeof(CMemUnused)) {//Doesn't fit, undo
+    uum->size+=size;
+    uum1=uum;
+    goto ma_next;
+  }
+  uum=uum(U8 *)+uum->size; //Take from the top of the chunk
+
+ma_almost_done:
+  hc->used_u8s+=size;
+  LBtr(&hc->locked_flags,HClf_LOCKED);
+  POPFD
+  res=uum;
+  res(CMemUsed *)->size=size;
+  res(CMemUsed *)->hc=hc;
+  res+=offset(CMemUsed.start);
+  if (Bt(&sys_semas[SEMA_HEAPLOG_ACTIVE],0) && ext && ext[EXT_HEAPLOG_MALLOC])
+    (*ext[EXT_HEAPLOG_MALLOC])(res);
+  if (sys_heap_init_flag)
+    MemSet(res,sys_heap_init_val,size-offset(CMemUsed.start));
+  return res;
+
+ma_out_of_mem:
+  LBtr(&hc->locked_flags,HClf_LOCKED);
+  POPFD
+  throw('OutMem',TRUE);
+  return NULL;
+}
+
+U0 ArmFree(U8 *addr)
+{
+  CMemUsed *um;
+  CHeapCtrl *hc;
+  I64 size;
+  U8 *a;
+  if (Bt(&sys_semas[SEMA_HEAPLOG_ACTIVE],0) && ext && ext[EXT_HEAPLOG_FREE]) {
+    a=addr;
+    if (a && (size=a(I64 *)[-1])<0) //Aligned allocs have a neg size
+      a+=size;
+    (*ext[EXT_HEAPLOG_FREE])(a);
+  }
+  if (!addr)
+    return;
+  if ((size=addr(I64 *)[-1])<0) //Neg size is offset to the real start
+    addr+=size;
+  PUSHFD
+  um=addr-offset(CMemUsed.start);
+  hc=um->hc;
+  if (hc->hc_signature!=HEAP_CTRL_SIGNATURE_VAL) {
+    SysBadFree(addr);
+    SysHlt;
+  }
+  size=um->size;
+  hc->used_u8s-=size;
+  CLI
+  while (LBts(&hc->locked_flags,HClf_LOCKED))
+    PAUSE
+  if (size<MEM_HEAP_HASH_SIZE) {
+    um(CMemUnused *)->next=hc->heap_hash[size>>3];
+    hc->heap_hash[size>>3]=um;
+  } else
+    MemPagTaskFree(um(U8 *)-sizeof(CMemBlk),hc);
+  LBtr(&hc->locked_flags,HClf_LOCKED);
+  POPFD
+}
+
+U8 *ArmMUsed(U8 *src)
+{//The CMemUsed.start of an object, also for aligned allocs.
+  I64 size;
+  if (src && (size=src(I64 *)[-1])<0)
+    src+=size;
+  return src;
+}
+
+I64 ArmMSize(U8 *src)
+{
+  if (!src) return 0;
+  src=ArmMUsed(src);
+  return src(I64 *)[-1]-offset(CMemUsed.start);
+}
+
+I64 ArmMSize2(U8 *src)
+{
+  if (!src) return 0;
+  src=ArmMUsed(src);
+  return src(I64 *)[-1];
+}
+
+CHeapCtrl *ArmMHeapCtrl(U8 *src)
+{
+  if (!src) return NULL;
+  src=ArmMUsed(src);
+  return (src-offset(CMemUsed.start))(CMemUsed *)->hc;
+}
+
+asm {
+_MALLOC::	B	&ArmMAlloc
+_FREE::		B	&ArmFree
+_MSIZE::	B	&ArmMSize
+_MSIZE2::	B	&ArmMSize2
+_MHEAP_CTRL::	B	&ArmMHeapCtrl
+}

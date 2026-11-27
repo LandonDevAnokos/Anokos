@@ -151,7 +151,7 @@ are in [ARM64.md](ARM64.md).
 **Scope**
 
 - [ ] Split architecture-specific code (boot, interrupts, memory management, context switching)
-      from portable kernel code (ARM64: boot, KUtils, KMathA and string asm done)
+      from portable kernel code (ARM64: boot, memory, tasks and the asm routines done)
 - [ ] TerryC compiler back ends that generate ARM64 and ppc64 machine code (ARM64 code
       generator and assembler working; ppc64 not started)
 - [ ] Boot paths for each platform: Raspberry Pi firmware and device tree, and Open Firmware on

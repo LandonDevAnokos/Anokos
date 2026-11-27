@@ -1,0 +1,38 @@
+//ARM64 version of $LK,"BlkPoolsInit",A="MN:BlkPoolsInit"$(). x86 assumes RAM from address 0 and a low
+//16 MiB boot area; ARM64 RAM can start anywhere (1 GiB on QEMU virt).
+
+#include "/Kernel/Arm64/Mem"
+
+U0 BlkPoolsInit()
+{//Give the heaps the RAM $LK,"ArmMemInit",A="MN:ArmMemInit"$() held back. The code heap gets the
+//rest of the RAM range holding the image, up to 2 GiB (like x86's
+//code_heap_limit); the data heap gets all other RAM.
+  CMemE820 *m20=MEM_E820;
+  U8 *lo,*hi,*code_lo=mem_heap_limit+1,*code_hi;
+  Bool first=TRUE;
+  code_hi=MinI64(arm_heap_end,arm_heap_start+0x80000000);
+  if (code_hi>code_lo)
+    BlkPoolAdd(sys_code_bp,code_lo,(code_hi-code_lo)>>MEM_PAG_BITS);
+  mem_heap_limit=code_hi-1;
+  while (m20->type) {
+    if (m20->type==1) {
+      lo=m20->base;
+      hi=lo+m20->len;
+      if (lo<=arm64_load_base<hi) //Only what's above the code heap
+	lo=code_hi;
+      lo=(lo+MEM_PAG_SIZE-1)&~(MEM_PAG_SIZE-1);
+      hi&=~(MEM_PAG_SIZE-1);
+      if (lo<hi && hi-lo>=64*MEM_PAG_SIZE) {
+	if (first) {
+	  BlkPoolInit(lo,(hi-lo)>>MEM_PAG_BITS);
+	  sys_data_bp=lo;
+	  Fs->data_heap=HeapCtrlInit(,Fs,sys_data_bp);
+	  first=FALSE;
+	} else
+	  BlkPoolAdd(sys_data_bp,lo,(hi-lo)>>MEM_PAG_BITS);
+      }
+    }
+    m20++;
+  }
+  LBts(&sys_run_level,RLf_FULL_HEAPS);
+}

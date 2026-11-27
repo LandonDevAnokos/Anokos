@@ -40,6 +40,9 @@ CA64Gen a64;
 U0 A64Err(U8 *msg)
 {
   PrintErr("ARM64: %s\n",msg);
+  if (a64.cc->htc.fun)
+    PrintErr("ARM64: in %s, line %d\n",a64.cc->htc.fun->str,
+	  a64.cc->lex_include_stk->line_num);
   if (a64.tmpi)
     ICPut(a64.cc,a64.tmpi);
   LexExcept(a64.cc,"ARM64 code generation error at ");
@@ -667,7 +670,7 @@ U0 A64BitOp(I64 code,Bool branch,Bool br_if_set)
   CIntermediateCode *tmpi=a64.tmpi;
   CICArg *bit_arg,*base_arg;
   I64 vb,vbit,base_reg,off,retry,op=0;
-  Bool by_val=ToBool(tmpi->ic_flags&ICF_BY_VAL),
+  Bool by_val=ToBool(tmpi->ic_flags&ICF_BY_VAL),is64,
 	locked=(code==IC_LBTS||code==IC_LBTR||code==IC_LBTC);
   switch (code) {
     case IC_BTS: case IC_LBTS: case IC_BR_BTS: case IC_BR_NOT_BTS:
@@ -712,6 +715,32 @@ U0 A64BitOp(I64 code,Bool branch,Bool br_if_set)
       vb=A64Get(base_arg->type,base_arg->reg,base_arg->disp,A64_T3);
       A64Mov(A64_T3,vb);
     }
+    if (bit_arg->type&MDF_IMM && 0<=bit_arg->disp<64) {
+//A constant bit: one 32 or 64-bit access, like x86 BT m32/m64,imm.
+//Device registers (mailboxes, UARTs) often reject byte accesses.
+      is64=bit_arg->disp>=32;
+      A64Imm(A64_T0,1<<bit_arg->disp);
+      retry=a64.rip;
+      if (locked)
+	A64I(A64Ldaxr(A64_T2,A64_T3,is64));
+      else if (is64)
+	A64I(A64LSImm(A64LS_LDRX,A64_T2,A64_T3,0));
+      else
+	A64I(A64LSImm(A64LS_LDRW,A64_T2,A64_T3,0));
+      A64I(A64Tst(A64_T2,A64_T0));
+      A64I(A64Cset(A64_T1,A64C_NE));
+      if (op) {
+	A64I(A64Alu(op,A64_T2,A64_T2,A64_T0));
+	if (locked) {
+	  A64I(A64Stlxr(A64_IP0,A64_T2,A64_T3,is64));
+	  A64I(A64Cbz(A64_IP0,retry-a64.rip,TRUE));
+	} else if (is64)
+	  A64I(A64LSImm(A64LS_STRX,A64_T2,A64_T3,0));
+	else
+	  A64I(A64LSImm(A64LS_STRW,A64_T2,A64_T3,0));
+      }
+      goto bo_done;
+    }
     if (bit_arg==&tmpi->arg1) {
       vbit=A64Get(bit_arg->type,bit_arg->reg,bit_arg->disp,A64_T0);
       A64Mov(A64_T0,vbit);
@@ -737,6 +766,7 @@ U0 A64BitOp(I64 code,Bool branch,Bool br_if_set)
 	A64I(A64LSImm(A64LS_STRB,A64_T2,A64_T3,0));
     }
   }
+bo_done:
   if (branch)
     A64TestBranch(A64_T1,br_if_set);
   else
@@ -860,18 +890,50 @@ U0 A64Swap(I64 code)
   A64I(A64LSImm(A64StoreOp(t),A64_T3,p1,0));
 }
 
-U0 A64FTemplate(I64 code)
-{//Built-in F64 functions. Sin/Cos/Tan/Atan/` have no ARM64 instruction.
-  I64 v=A64Arg1();
-  A64I(A64FmovDX(0,v));
-  switch (code) {
-    case IC_SQR:  A64I(A64Fop2(A64OP_FMUL,0,0,0)); break;
-    case IC_ABS:  A64I(A64Fop1(A64OP_FABS,0,0)); break;
-    case IC_SQRT: A64I(A64Fop1(A64OP_FSQRT,0,0)); break;
-    default:
-      A64Err("Sin/Cos/Tan/Atan/power are not built in on ARM64 yet");
+U0 A64CallFun(U8 *name,I64 a1,I64 a2=-1)
+{//Call a function of the image being built, for built-ins ARM64 has no
+//instruction for. a1 (and a2) are registers holding the args. The regs
+//an IC may otherwise expect to keep (X0-X5, X8, X9) are saved.
+  CHashFun *tmpf=HashFind(name,a64.cc->htc.hash_table_lst,HTT_FUN);
+  I64 i;
+  if (!tmpf || Bt(&tmpf->flags,Cf_EXTERN) && !tmpf->exe_addr) {
+    PrintErr("ARM64: needs %s defined earlier in the image\n",name);
+    A64Err("built-in function missing");
   }
-  A64I(A64FmovXD(A64_T2,0));
+  for (i=0;i<=9;i++)
+    if (i!=6 && i!=7)
+      A64Push(i);
+  if (a2>=0)
+    A64Push(a2);
+  A64Push(a1);
+  A64I(A64Bl(tmpf->exe_addr-A64PC));
+  A64Mov(A64_T2,0);
+  for (i=9;i>=0;i--)
+    if (i!=6 && i!=7)
+      A64Pop(i);
+}
+
+U0 A64FTemplate(I64 code)
+{//Built-in F64 functions. Sin/Cos/Tan/ATan have no ARM64 instruction
+//and call TerryC versions (see /Kernel/Arm64/KMathSoft.TC).
+  I64 v=A64Arg1();
+  switch (code) {
+    case IC_SQR:
+    case IC_ABS:
+    case IC_SQRT:
+      A64I(A64FmovDX(0,v));
+      switch (code) {
+	case IC_SQR:  A64I(A64Fop2(A64OP_FMUL,0,0,0)); break;
+	case IC_ABS:  A64I(A64Fop1(A64OP_FABS,0,0)); break;
+	case IC_SQRT: A64I(A64Fop1(A64OP_FSQRT,0,0)); break;
+      }
+      A64I(A64FmovXD(A64_T2,0));
+      break;
+    case IC_SIN:  A64CallFun("ArmSin",v);  break;
+    case IC_COS:  A64CallFun("ArmCos",v);  break;
+    case IC_TAN:  A64CallFun("ArmTan",v);  break;
+    case IC_ATAN: A64CallFun("ArmATan",v); break;
+  }
   A64Mov(0,A64_T2);
   A64Res(A64_T2);
 }
@@ -882,6 +944,7 @@ U0 A64Ic(COptReg *reg_offsets)
   CCodeMisc *lb;
   CExternUsage *tmpeu;
   CHashFun *tmpf;
+  CAOT *tmpaot;
   I64 v1,v2,i,code=tmpi->ic_code;
 
   switch (code) {
@@ -950,8 +1013,18 @@ U0 A64Ic(COptReg *reg_offsets)
       A64I(A64Blr(A64_IP0));
       break;
     case IC_CALL_IMPORT:
-    case IC_ADDR_IMPORT:
-      A64Err("ARM64 images can't import symbols; define it in the image");
+//ARM64 images have no loader to resolve imports (x86 gets these from
+//modules loaded later, like the compiler). Call the image's
+//ArmImportTrap instead, which reports the caller.
+      tmpf=HashFind("ArmImportTrap",a64.cc->htc.hash_table_lst,HTT_FUN);
+      if (!tmpf || Bt(&tmpf->flags,Cf_EXTERN)) {
+	PrintErr("ARM64: import %s\n",tmpi->ic_data(CHash *)->str);
+	A64Err("calls to imports need ArmImportTrap defined earlier");
+      }
+      A64I(A64Bl(tmpf->exe_addr-A64PC));
+      break;
+    case IC_ADDR_IMPORT: //Unresolved: NULL
+      A64Res(A64_ZR);
       break;
     case IC_HEAP_GLBL:
       A64Err("OPTf_GLBLS_ON_DATA_HEAP is not supported on ARM64");
@@ -1092,8 +1165,13 @@ U0 A64Ic(COptReg *reg_offsets)
       A64AddConst(A64_T2,v1,-tmpi->ic_data);
       A64Res(A64_T2);
       break;
-    case IC_POWER:
-      A64Err("` (power) is not built in on ARM64 yet");
+    case IC_POWER: //base`power: Pow(base,power)
+      v2=A64Arg2();
+      A64Mov(A64_T1,v2);
+      v1=A64Arg1();
+      A64Mov(A64_T0,v1);
+      A64CallFun("Pow",A64_T0,A64_T1);
+      A64Res(A64_T2);
       break;
 
     case IC_EQU_EQU:
@@ -1214,8 +1292,24 @@ U0 A64Ic(COptReg *reg_offsets)
       A64Res(A64_T2);
       break;
     case IC_RDTSC:      A64I(A64Mrs(0,A64SR_CNTVCT_EL0)); break;
-    case IC_GET_RFLAGS: A64I(A64Mrs(0,A64SR_DAIF)); break;
-    case IC_SET_RFLAGS: A64I(A64Msr(A64SR_DAIF,A64Arg1)); break;
+    case IC_GET_RFLAGS:
+//Shared code tests x86 RFLAGS bit 9 (IF). Report IF=!DAIF.I, plus
+//bit 1 which is always set on x86.
+      A64I(A64Mrs(A64_IP0,A64SR_DAIF));
+      A64I(A64Bfm(A64OP_UBFM,A64_IP0,A64_IP0,7,7));	//UBFX IP0,IP0,7,1
+      A64I(A64LslImm(A64_IP0,A64_IP0,9));
+      A64I(A64Movz(0,0x202));
+      A64I(A64Alu(A64OP_SUB,0,0,A64_IP0));
+      break;
+    case IC_SET_RFLAGS: //IF clear masks IRQ and FIQ (DAIF.I and DAIF.F)
+      v1=A64Arg1();
+      A64I(A64Bfm(A64OP_UBFM,A64_IP0,v1,9,9));		//UBFX IP0,v1,9,1
+      A64I(0xD2400000|(A64_IP0<<5)|A64_IP0);		//EOR IP0,IP0,1
+      A64I(A64LslImm(A64_IP1,A64_IP0,7));
+      A64I(A64LslImm(A64_IP0,A64_IP0,6));
+      A64I(A64Alu(A64OP_ORR,A64_IP0,A64_IP0,A64_IP1));
+      A64I(A64Msr(A64SR_DAIF,A64_IP0));
+      break;
     case IC_CLFLUSH:
       A64I(0xD50B7E20|A64Arg1);	//DC CIVAC
       break;
@@ -1345,8 +1439,14 @@ U0 A64Ic(COptReg *reg_offsets)
       A64FTemplate(code);
       break;
     case IC_ASM:
-      A64Err("asm blocks inside functions are not supported on ARM64 yet; "
-	    "put the asm at file level");
+      tmpaot=tmpi->ic_data;
+      if (tmpaot->aot_U8s&3)
+	A64Err("asm in a function must be whole ARM64 instructions");
+      if (tmpaot->abss || tmpaot->next_ie!=&tmpaot->next_ie)
+	A64Err("asm in a function can't use labels or addresses on ARM64 yet");
+      if (a64.buf)
+	MemCpy(a64.buf+a64.rip,tmpaot->buf,tmpaot->aot_U8s);
+      a64.rip+=tmpaot->aot_U8s;
       break;
     default:
       A64Err("Missing ARM64 handler for this intermediate code");

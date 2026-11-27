@@ -3,7 +3,7 @@
 //Rounding, Sign and the FP control words are ARM64 asm here. ARM64 has
 //no instructions for Exp, Ln, Pow or atan, and the D3 vector ops are
 //plain F64 math, so those labels branch to TerryC versions in
-//$LK,"Arm64/KMathB",A="FI:::/Kernel/Arm64/KMathB.TC"$ (the args are already where a TerryC function wants them).
+//$LK,"Arm64/KMathSoft",A="FI:::/Kernel/Arm64/KMathSoft.TC"$ (the args are already where a TerryC function wants them).
 
 asm {
 _ROUND::	//F64 Round(F64 d): to nearest, ties to even (x87 default)

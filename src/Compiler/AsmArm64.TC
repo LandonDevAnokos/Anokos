@@ -9,6 +9,11 @@ as for x86. Syntax is standard ARM64 except:
   - Mnemonics, registers and conditions are not case sensitive.
   - B.EQ and BEQ are both accepted.
   - MOV Xd,imm64 expands to MOVZ/MOVN/MOVK as needed.
+  - A load/store offset that doesn't fit (packed TerryC classes have odd
+	offsets) becomes MOV X17,offset plus a register-offset access.
+  - The x86 one-liners shared kernel code uses inside functions work:
+	CLI/STI mask/unmask IRQ+FIQ, PUSHFD/POPFD save/restore DAIF on the
+	stack, PAUSE is YIELD, HLT is WFI, WBINVD is DSB SY, CLD is NOP.
 Label operands (B BL B.cond CBZ CBNZ TBZ TBNZ ADR ADRP LDR-literal) are
 PC relative, so ARM64 images need no relocations for code.
 */
@@ -639,8 +644,12 @@ and LDRSW forms op_w is used for both register kinds.*/
     A64Emit(cc,op|0x01000000|((v>>scale)<<10)|(n<<5)|t);
   else if (-256<=v<=255)
     A64Emit(cc,op|((v&0x1FF)<<12)|(n<<5)|t);
-  else
-    LexExcept(cc,"Offset out of range at ");
+  else if (n==A64_IP1)
+    LexExcept(cc,"Offset out of range (X17 base can't use the long form) at ");
+  else {//Packed TerryC classes give odd offsets: MOV X17,off / op t,[n,X17]
+    A64PMovImm(cc,A64_IP1,A64K_X,v);
+    A64Emit(cc,op|0x206800|(A64_IP1<<16)|(n<<5)|t);
+  }
 }
 
 U0 A64PLdStPair(CCmpCtrl *cc,Bool is_load)
@@ -762,6 +771,27 @@ Bool PrsArm64Ins(CCmpCtrl *cc)
   if (cc->token!=TK_IDENT || StrLen(cc->cur_str)>=STR_LEN-1)
     return FALSE;
   A64Upper(m,cc->cur_str,STR_LEN);
+
+//x86 one-liners the shared kernel uses inside functions, given their
+//ARM64 meaning: the x86 interrupt flag becomes the DAIF I and F masks.
+  if (!StrCmp(m,"CLI")) {Lex(cc); A64Emit(cc,0xD50343DF); return TRUE;} //MSR DAIFSet,3
+  if (!StrCmp(m,"STI")) {Lex(cc); A64Emit(cc,0xD50343FF); return TRUE;} //MSR DAIFClr,3
+  if (!StrCmp(m,"PUSHFD")) {//MRS X16,DAIF / STR X16,[SP,-8]!
+    Lex(cc);
+    A64Emit(cc,A64Mrs(A64_IP0,A64SR_DAIF));
+    A64Emit(cc,A64LSPre(A64LS_STRX,A64_IP0,A64_SP,-8));
+    return TRUE;
+  }
+  if (!StrCmp(m,"POPFD")) {//LDR X16,[SP],8 / MSR DAIF,X16
+    Lex(cc);
+    A64Emit(cc,A64LSPost(A64LS_LDRX,A64_IP0,A64_SP,8));
+    A64Emit(cc,A64Msr(A64SR_DAIF,A64_IP0));
+    return TRUE;
+  }
+  if (!StrCmp(m,"PAUSE")) {Lex(cc); A64Emit(cc,0xD503203F); return TRUE;} //YIELD
+  if (!StrCmp(m,"HLT"))   {Lex(cc); A64Emit(cc,0xD503207F); return TRUE;} //WFI
+  if (!StrCmp(m,"WBINVD")) {Lex(cc); A64Emit(cc,A64_DSB_SY); return TRUE;}
+  if (!StrCmp(m,"CLD"))   {Lex(cc); A64Emit(cc,0xD503201F); return TRUE;} //NOP
 
 //Branches
   if (!StrCmp(m,"B")) {

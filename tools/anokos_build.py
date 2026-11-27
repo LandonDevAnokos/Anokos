@@ -80,14 +80,15 @@ def qemu_x86_args(iso, serial_log, mem=2048):
     return args
 
 
-def wait_serial(serial_log, marker, timeout, alive=lambda: True):
-    """Poll a serial log until `marker` shows up. Returns the log text, or None on timeout."""
+def wait_serial(serial_log, marker, timeout, alive=lambda: True, fail_marker=None):
+    """Poll a serial log until `marker` (or `fail_marker`) shows up.
+    Returns the log text, or None on timeout."""
     t0 = time.time()
     while time.time() - t0 < timeout:
         time.sleep(3)
         if os.path.exists(serial_log):
             data = open(serial_log, "rb").read().decode("latin-1")
-            if marker in data:
+            if marker in data or (fail_marker and fail_marker in data):
                 return data
         if not alive():
             break
@@ -311,7 +312,12 @@ def arm64(timeout):
                            qemu_x86_args(iso, serial_log), QEMU_SOCK,
                            log=os.path.join(BUILD, "arm64build_qemu.log"))
     try:
-        data = wait_serial(serial_log, "@@ARM64 DONE", timeout, vm_.running)
+        data = wait_serial(serial_log, "@@ARM64 DONE", timeout, vm_.running,
+                           fail_marker="TempleOS Debugger")
+        if data is not None and "@@ARM64 DONE" not in data:
+            time.sleep(2)
+            vm_.quit()
+            raise SystemExit(f"ARM64 build stopped in the debugger; see {serial_log}")
         if data is None:
             shot = os.path.join(BUILD, "arm64build_timeout.png")
             if vm_.running():

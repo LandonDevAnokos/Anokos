@@ -1,3 +1,6 @@
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/MAllocFree"
+#else
 asm {
 //************************************
 //See $LK,"::/Doc/Credits.DD"$.
@@ -379,6 +382,7 @@ _MHEAP_CTRL::
 @@10:	POP	RBP
 	RET1	8
 }
+#endif
 
 _extern _FREE U0 Free(U8 *addr); //Free $LK,"MAlloc",A="MN:MAlloc"$()ed memory chunk.
 _extern _MSIZE I64 MSize(U8 *src); //Size of heap object.

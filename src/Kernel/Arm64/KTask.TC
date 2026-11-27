@@ -1,0 +1,12 @@
+//ARM64 parts of $LK,"KTask",A="FI:::/Kernel/KTask.TC"$.
+
+asm {
+//argpop I64 CallStkGrow(I64 stk_size_threshold,I64 stk_size,
+//	I64 (*fp_addr)(...),...)
+//TODO: grow the stack like x86. For now always the "enough stack" path:
+//drop our args and tail-call fp_addr with the rest.
+_ARM_CALL_STK_GROW::
+	LDR	X16,[SP,16]
+	ADD	SP,SP,32	//threshold, stk_size, fp_addr, argc
+	BR	X16
+}

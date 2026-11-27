@@ -102,6 +102,11 @@ See also $LK,"GrUpdateScrn",A="MN:GrUpdateScrn"$().
     if (text.raw_flags&RWF_IN_DOLLAR)
       return;
   }
+#ifdef ARCH_ARM64
+  ArmSerPutChar(ch); //Serial console
+  if (!Bt(&sys_run_level,RLf_VBE))
+    return;
+#endif
   if (Bt(&sys_run_level,RLf_VBE)) {
     PUSHFD
     CLI
@@ -137,8 +142,10 @@ See also $LK,"GrUpdateScrn",A="MN:GrUpdateScrn"$().
       ptr[0]=ch;
       ptr[1]=BLACK<<4+WHITE;
     } else {
+#ifndef ARCH_ARM64
       OutU8(VGAP_IDX,VGAR_MAP_MASK);
       OutU8(VGAP_DATA,0x0F); //All planes -- WHITE
+#endif
       if (text.raw_flags&RWF_SCROLL && text.raw_col && !row && !col) {
 //Scroll cached image
 	MemCpy(text.raw_scrn_image,

@@ -620,8 +620,12 @@ U0 Fault2(I64 fault_num,I64 fault_err_code)
     "RIP:%08X",Fs->rip; //Sometimes crashes on %p, so do this first
     ":%pRSP:%08X\n",Fs->rip,Fs->rsp;
     if (fault_num==I_PAGE_FAULT) {
+#ifdef ARCH_ARM64
+      i=ArmFar;
+#else
       MOV_RAX_CR2
       i=GetRAX;
+#endif
       "Fault Addr:%08X:%p\n",i,i;
     }
     Fault3(fault_num,fault_err_code);
@@ -642,7 +646,11 @@ U0 Panic(U8 *msg=NULL,I64 msg_num=0,Bool panic=TRUE)
   dbg.msg=msg;
   dbg.msg_num=msg_num;
   dbg.panic=panic;
+#ifdef ARCH_ARM64 //Until the debugger's interrupt entry is converted
+  ArmPanic(msg,msg_num,panic);
+#else
   INT I_DBG
+#endif
   POPFD
 }
 

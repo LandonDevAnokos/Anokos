@@ -2,8 +2,34 @@
 //copies with the same labels and results as the x86 originals.
 //See $LK,"Arm64/KUtils",A="FI:::/Kernel/Arm64/KUtils.TC"$ for the calling convention.
 //
-//Still to port with the rest of StrA: PUT_HEX_Uxx, PUT_CHARS and PUT_STR
-//(asm-callable wrappers around $LK,"PutHex",A="MN:PutHex"$, $LK,"PutChars",A="MN:PutChars"$ and $LK,"PutS",A="MN:PutS"$).
+//Not ported: PUT_HEX_Uxx, PUT_CHARS and PUT_STR, register-argument
+//wrappers x86 asm uses for debug output; no ARM64 asm needs them yet.
+
+U8 *ArmStrMatch(U8 *needle,U8 *haystack_str)
+{//Same results as x86 _STRMATCH.
+  I64 i;
+  if (!haystack_str || !needle) return NULL;
+  if (!*needle) return haystack_str;
+  for (;*haystack_str;haystack_str++)
+    if (*haystack_str==*needle) {
+      for (i=1;needle[i] && needle[i]==haystack_str[i];i++);
+      if (!needle[i]) return haystack_str;
+    }
+  return NULL;
+}
+
+U8 *ArmStrIMatch(U8 *needle,U8 *haystack_str)
+{
+  I64 i;
+  if (!haystack_str || !needle) return NULL;
+  if (!*needle) return haystack_str;
+  for (;*haystack_str;haystack_str++)
+    if (ToUpper(*haystack_str)==ToUpper(*needle)) {
+      for (i=1;needle[i] && ToUpper(needle[i])==ToUpper(haystack_str[i]);i++);
+      if (!needle[i]) return haystack_str;
+    }
+  return NULL;
+}
 
 asm {
 _STRCPY::	//U0 StrCpy(U8 *dst,U8 *src). src=NULL gives "".
@@ -105,4 +131,9 @@ _STRNICMP::	//I64 StrNICmp(U8 *st1,U8 *st2,I64 n)
 	BHI	@@15
 	MOV	X0,-1
 @@15:	RET
+}
+
+asm {
+_STRMATCH::	B	&ArmStrMatch
+_STRIMATCH::	B	&ArmStrIMatch
 }

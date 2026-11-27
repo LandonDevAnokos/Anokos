@@ -5,18 +5,29 @@
 //  Cmp("/Kernel/KernelArm64","B:/KernelArm64","B:/Kernel8");
 //On the build machine: python tools/anokos_build.py arm64
 //
-//ARM64 replacements for x86-only kernel code live in /Kernel/Arm64.
-//Shared kernel files are added here as they are converted; see
-//ARM64.md in the repository for the plan and status.
+//Same files in the same order as $LK,"Kernel.PRJ",A="FI:::/Kernel/Kernel.PRJ"$. Shared files use
+//#ifdef ARCH_ARM64 for their x86-only parts, with the ARM64 versions in
+///Kernel/Arm64. See ARM64.md in the repository for the status.
 
 #exe {
   Cd(__DIR__);;
   Option(OPTf_ARM64,ON);
   Option(OPTf_WARN_PAREN,ON);
   Option(OPTf_WARN_DUP_TYPES,ON);
+//Kernel config without the questions $LK,"KCfgNew",A="MN:KCfgNew"$ asks: no drives to mount
+//yet (no ARM64 storage drivers), single core.
+  #include "KCfg"
+  CKCfg *kernel_cfg;
+  kernel_cfg=CAlloc(sizeof(CKCfg));
+  kernel_cfg->add_dev=DocNew;
+  kernel_cfg->home_dir=StrNew("::/Home");
+  kernel_cfg->dsk_cache_size_exp=StrNew("Scale2Mem(0x80000,0x8000000)");
+  kernel_cfg->boot_drv_let='B';
+  kernel_cfg->opts[CFG_NO_MP]=TRUE;
+  kernel_cfg->opts[CFG_DONT_PROBE]=TRUE;
 };
+#define ARCH_ARM64	1
 
-//Same order as $LK,"Kernel.PRJ",A="FI:::/Kernel/Kernel.PRJ"$, with ARM64 files for x86-only ones.
 #include "KernelA.TH"
 #include "Arm64/KStart"		//x86: KStart16, KStart32, KStart64
 #include "Arm64/KernelA64.TH"
@@ -24,17 +35,49 @@
 #include "Arm64/KUtils"		//x86: KUtils
 #exe {Option(OPTf_KEEP_PRIVATE,ON);};
 #include "/Compiler/CompilerA.TH"
+#exe {Option(OPTf_EXTERNS_TO_IMPORTS,ON);};
+#include "/Compiler/CompilerB.TH"
+#exe {Option(OPTf_EXTERNS_TO_IMPORTS,OFF);};
 #exe {Option(OPTf_KEEP_PRIVATE,OFF);};
 #include "KernelB.TH"
-#include "Arm64/KMathB"		//TerryC for what x87 did in KMathA
-#include "Arm64/StrA"		//x86: asm in StrA
-//Until StrA.TC itself is in the ARM64 build, declare its asm routines here.
-_extern _STRCMP I64 StrCmp(U8 *st1,U8 *st2);
-_extern _STRICMP I64 StrICmp(U8 *st1,U8 *st2);
-_extern _STRNCMP I64 StrNCmp(U8 *st1,U8 *st2,I64 n);
-_extern _STRNICMP I64 StrNICmp(U8 *st1,U8 *st2,I64 n);
-_extern _STRCPY U0 StrCpy(U8 *dst,U8 *src);
+#include "Arm64/KMathSoft"	//TerryC for what x87 did in KMathA
 #include "Arm64/Board"
 #include "Arm64/Serial"
-#include "Arm64/KExcept"
-#include "Arm64/KMain"
+#include "Arm64/Fault"
+#include "KExts"
+#include "StrA"
+#include "KGlbls"
+#include "KMathB"
+#include "Sched"
+#include "Mem/MakeMem"
+#include "FontStd"
+#include "FontCyrillic"
+#include "StrB"
+#include "KHashA"
+//KInts: x86 interrupts (IDT, PIC); ARM64 vectors are in Arm64/KStart.
+#include "KDataTypes"
+#include "Compress"
+#include "KHashB"
+#include "KLoad"
+#include "KDate"
+#include "StrPrint"
+#include "StrScan"
+#include "KDefine"
+#include "Display"
+#include "KMisc"
+#include "KDbg"
+#include "KeyDev"
+#include "KExcept"
+#include "Arm64/Input"		//x86: SerialDev/Keyboard, SerialDev/Mouse (PS/2)
+#include "SerialDev/Message"
+#include "QSort"
+#include "KTask"
+#include "Job"
+//PCIBIOS: x86 BIOS32; ARM64 PCIe comes with milestone 2.
+#include "MultiProc"
+#include "EdLite"
+#include "BlkDev/MakeBlkDev"
+#include "FunSeg"
+#include "Arm64/KMain"		//x86: KMain
+
+#exe {KCfgDel(kernel_cfg);};

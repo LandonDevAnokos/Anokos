@@ -1,0 +1,72 @@
+//ARM64 stand-ins for the IDE/ATA driver ($LK,"DskATA",A="FI:::/Kernel/BlkDev/DskATA.TC"$, $LK,"DskATAId",A="FI:::/Kernel/BlkDev/DskATAId.TC"$),
+//which is x86 port I/O. The rest of the block device layer calls these;
+//on ARM64 there are no IDE devices, so they find nothing and do nothing.
+//RAM disks and the file systems work as usual. ARM64 storage drivers
+//(virtio-blk on QEMU, the SD card on a Raspberry Pi) come later.
+
+Bool BootDVDProbe(CBlkDev *)
+{
+  return FALSE;
+}
+
+Bool BootDVDProbeAll(CBlkDev *)
+{
+  return FALSE;
+}
+
+I64 MountIDEAuto()
+{
+  return 0;
+}
+
+Bool ATAInit(CBlkDev *)
+{
+  return FALSE;
+}
+
+Bool ATAPIWaitReady(CBlkDev *,F64)
+{
+  return FALSE;
+}
+
+U0 ATAReadBlks(CBlkDev *,U8 *,I64,I64)
+{
+  throw('BlkDev');
+}
+
+Bool ATAPIReadBlks2(CBlkDev *,F64,U8 *,I64,I64,Bool)
+{
+  return FALSE;
+}
+
+Bool ATARBlks(CDrv *,U8 *,I64,I64)
+{
+  throw('BlkDev');
+  return FALSE;
+}
+
+U0 ATAWriteBlks(CBlkDev *,U8 *,I64,I64)
+{
+  throw('BlkDev');
+}
+
+Bool ATAPISync(CBlkDev *)
+{
+  return FALSE;
+}
+
+U0 ATAPIClose(CBlkDev *,I64 close_field=0x200,I64 track=0)
+{
+  no_warn close_field,track;
+}
+
+U0 ATAPIWriteBlks(CBlkDev *,U8 *,I64,I64)
+{
+  throw('BlkDev');
+}
+
+Bool ATAWBlks(CDrv *,U8 *,I64,I64)
+{
+  throw('BlkDev');
+  return FALSE;
+}

@@ -130,6 +130,42 @@ I64 Bcd2Bin(U64 b)
   return res;
 }
 
+#ifdef ARCH_ARM64
+U0 NowDateTimeStruct(CDateStruct *_ds)
+{//ARM64: the PL031 real-time clock (QEMU virt) counts seconds since
+//1970. Boards without a clock (Raspberry Pi) read 2000-01-01.
+  I64 secs=0,days,z,era,doe,yoe,doy,mp,y,m;
+  MemSet(_ds,0,sizeof(CDateStruct));
+  if (arm_board.rtc_base)
+    secs=*arm_board.rtc_base(U32 *);
+  else
+    secs=946684800;
+  days=secs/86400;
+  secs%=86400;
+  _ds->hour=secs/3600;
+  _ds->min=secs/60%60;
+  _ds->sec=secs%60;
+  _ds->day_of_week=(days+4)%7;
+//Civil date from days since 1970 (H. Hinnant's algorithm).
+  z=days+719468;
+  era=z/146097;
+  doe=z-era*146097;
+  yoe=(doe-doe/1460+doe/36524-doe/146096)/365;
+  doy=doe-(365*yoe+yoe/4-yoe/100);
+  mp=(5*doy+2)/153;
+  _ds->day_of_mon=doy-(153*mp+2)/5+1;
+  if (mp<10)
+    m=mp+3;
+  else
+    m=mp-9;
+  y=yoe+era*400;
+  if (m<=2)
+    y++;
+  _ds->mon=m;
+  _ds->year=y;
+}
+
+#else
 U0 NowDateTimeStruct(CDateStruct *_ds)
 {
   I64 i;
@@ -187,6 +223,8 @@ U0 NowDateTimeStruct(CDateStruct *_ds)
   if (_ds->min>59)	_ds->min=59;
   if (_ds->sec>59)	_ds->sec=59;
 }
+
+#endif
 
 CDate Now()
 {//Current datetime.

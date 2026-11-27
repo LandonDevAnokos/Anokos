@@ -1,3 +1,6 @@
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/KHashA"
+#else
 asm {
 //************************************
 SYS_HASH_STR::
@@ -250,6 +253,7 @@ _HASH_REM_DEL::
 	POP	RBP
 	RET1	24
 }
+#endif
 
 _extern _HASH_STR I64 HashStr(U8 *st); //Hash a string.
 _extern _HASH_FIND CHash *HashFind(U8 *needle_str,CHashTable *haystack_table,

@@ -1,6 +1,9 @@
 //See $LK,"::/Doc/Credits.DD"$.
 //See $LK,"CArcCompress",A="MN:CArcCompress"$, $LK,"CArcEntry",A="MN:CArcEntry"$, and $LK,"CArcCtrl",A="MN:CArcCtrl"$
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/Compress"
+#else
 asm {
 /****
 U0 ArcEntryGet(CArcCtrl *c)
@@ -96,6 +99,7 @@ _ARC_ENTRY_GET::
 	POP	RBP
 	RET1	8
 }
+#endif
 
 _extern _ARC_ENTRY_GET U0 ArcEntryGet(CArcCtrl *c);
 

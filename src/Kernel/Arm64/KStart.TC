@@ -443,6 +443,31 @@ _ARM_HVC::	LDP	X0,X1,[SP]	//HVC/SMC call: fn,a1,a2,a3 (PSCI)
 		ADD	SP,SP,32
 		HVC	0
 		RET
+_ARM_SET_FS::	LDR	X0,[SP]		//Fs (current task)
+		ADD	SP,SP,8
+		MSR	TPIDR_EL1,X0
+		RET
+_ARM_SET_GS::	LDR	X0,[SP]		//Gs (current CPU)
+		ADD	SP,SP,8
+		MSR	TPIDRRO_EL0,X0
+		RET
+_ARM_SWITCH_STK::			//U0 ArmSwitchStk(U8 *sp,U0 (*fp)()): never returns
+		LDP	X0,X1,[SP]
+		MOV	SP,X0
+		MOV	X30,0
+		BR	X1
+_ARM_DCACHE_FLUSH::			//U0 ArmDCacheFlush(U8 *addr,I64 len): clean+invalidate
+		LDP	X0,X1,[SP]
+		ADD	SP,SP,16
+		ADD	X1,X1,X0
+		AND	X0,X0,0xFFFFFFFFFFFFFFC0
+@@05:		CMP	X0,X1
+		BHS	@@10
+		DC	CIVAC,X0
+		ADD	X0,X0,64
+		B	@@05
+@@10:		DSB	SY
+		RET
 _ARM_SMC::	LDP	X0,X1,[SP]
 		LDP	X2,X3,[SP,16]
 		ADD	SP,SP,32
@@ -531,4 +556,10 @@ SYS_MP_CNT_LOCK::	DU64	1;
 SYS_CACHE_LINE_WIDTH::	DU64	DFT_CACHE_LINE_WIDTH;
 	DU8	DFT_CACHE_LINE_WIDTH-8 DUP(0);
 SYS_SEMAS::		DU8	SEMA_SEMAS_NUM*DFT_CACHE_LINE_WIDTH DUP(0);
+
+//x86 keeps CSysFixedArea (Adam's task and heap, the boot CPU, the code
+//BlkPool) at the fixed address SYS_FIXED_AREA. ARM64 images can load
+//anywhere, so it lives here and SYS_FIXED_AREA points to it.
+	ALIGN	4096,0
+ARM64_SYS_FIXED::	DU8	sizeof(CSysFixedArea) DUP (0);
 }

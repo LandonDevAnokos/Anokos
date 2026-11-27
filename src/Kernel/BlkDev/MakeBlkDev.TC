@@ -1,8 +1,12 @@
 #exe {Cd(__DIR__);};
 #include "DskStrA"
 #include "DskCache"
+#ifdef ARCH_ARM64 //IDE/ATA is x86 PCs. ARM64 storage drivers come later.
+#include "/Kernel/Arm64/Ata"
+#else
 #include "DskATA"
 #include "DskATAId"
+#endif
 #include "DskBlkDev"
 #include "DskDrv"
 #include "DskBlk"

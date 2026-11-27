@@ -1,0 +1,4 @@
+//ARM64: x86 builds its page tables in $LK,"Mem/PageTables",A="FI:::/Kernel/Mem/PageTables.TC"$ (SYS_INIT_PAGE_TABLES).
+//On ARM64 the boot code builds the identity map before any TerryC runs
+//($LK,"ARM64_MMU_INIT",A="FF:::/Kernel/Arm64/KStart.TC,ARM64_MMU_INIT"$), and $LK,"ArmMemInit",A="MN:ArmMemInit"$ sets up the block pools x86
+//sets up in SYS_INIT_16MEG_SYS_CODE_BP and $LK,"BlkPoolsInit",A="MN:BlkPoolsInit"$.

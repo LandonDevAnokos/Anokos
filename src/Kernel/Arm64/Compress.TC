@@ -1,0 +1,42 @@
+//ARM64 version of the asm in $LK,"Compress",A="FI:::/Kernel/Compress.TC"$: ArcEntryGet, in
+//TerryC from the reference version in the comment there.
+
+U0 ArmArcEntryGet(CArcCtrl *c)
+{
+  I64 i;
+  CArcEntry *tmp,*tmp1;
+
+  if (c->entry_used) {
+    i=c->free_idx;
+
+    c->entry_used=FALSE;
+    c->cur_entry=c->next_entry;
+    c->cur_bits_in_use=c->next_bits_in_use;
+    if (c->next_bits_in_use<ARC_BITS_MAX) {
+      c->next_entry = &c->compress[i++];
+      if (i==c->free_limit) {
+	c->next_bits_in_use++;
+	c->free_limit=1<<c->next_bits_in_use;
+      }
+    } else {
+      do if (++i==c->free_limit)
+	  i=c->min_table_entry;
+      while (c->hash[i]);
+      tmp=&c->compress[i];
+      c->next_entry=tmp;
+      tmp1=&c->hash[tmp->basecode];
+      while (tmp1) {
+	if (tmp1->next==tmp) {
+	  tmp1->next=tmp->next;
+	  break;
+	} else
+	  tmp1=tmp1->next;
+      }
+    }
+    c->free_idx=i;
+  }
+}
+
+asm {
+_ARC_ENTRY_GET::	B	&ArmArcEntryGet
+}

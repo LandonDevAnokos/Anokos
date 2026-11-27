@@ -1,3 +1,10 @@
+#ifdef ARCH_ARM64
+CTSS *TSSNew(I64)
+{//ARM64 has no task state segments.
+  return NULL;
+}
+
+#else
 asm {
 	ALIGN	16,OC_NOP
 USE16
@@ -113,6 +120,8 @@ CTSS *TSSNew(I64 cpu_num)
   return tss;
 }
 
+#endif
+
 CCPU *CPUStructInit(I64 num,CCPU *c,CTask *seth_task)
 {//Seth is null when called by adam on CSysFixedArea.boot_cpu0
   MemSet(c,0,sizeof(CCPU));
@@ -129,6 +138,40 @@ CCPU *CPUStructInit(I64 num,CCPU *c,CTask *seth_task)
   return c;
 }
 
+#ifdef ARCH_ARM64
+//ARM64 runs on one core until secondary cores are started through PSCI
+//(QEMU virt) or the spin tables (Raspberry Pi), and the GIC sends
+//inter-processor interrupts.
+
+U0 MPInt(U8 num,I64 cpu_num=1)
+{//Generate interrupt for specified core.
+  no_warn num;
+  if (cpu_num>=mp_cnt) {
+    if (!Bt(&sys_run_level,RLf_MP))
+      return;
+    else
+      throw('MultCore');
+  }
+}
+
+U0 MPIntAll(U8)
+{//Generate interrupt for all but own core.
+}
+
+U0 MPNMInt()
+{//Generate nonmaskable interrupt.
+}
+
+U0 MPHalt()
+{//Halt all other cores.
+  mp_cnt=1;
+}
+
+U0 MPAPICInit()
+{
+}
+
+#else
 U0 MPInt(U8 num,I64 cpu_num=1)
 {//Generate interrupt for specified core.
   if (cpu_num>=mp_cnt) {
@@ -188,6 +231,8 @@ U0 MPAPICInit()
     SetRFlags(RFLAGG_NORMAL);
   }
 }
+
+#endif
 
 #assert !offset(CJobCtrl.next_waiting)
 
@@ -280,6 +325,22 @@ U0 CoreAPSethInit()
   TaskContextRestore;
 }
 
+#ifdef ARCH_ARM64
+U0 Core0StartMP()
+{//ARM64: single core for now; see $LK,"MPInt",A="MN:MPInt"$.
+}
+
+U0 Core0Init()
+{//Called by adam during start-up
+  mp_cnt_initial=mp_cnt=1;
+  mp_cnt_lock=0;
+  dbg.mp_crash=ACAlloc(sizeof(CMPCrash));
+  adam_task->gs=cpu_structs=
+	CAlloc(sizeof(CCPU)*MP_PROCESSORS_NUM,Fs->code_heap);
+  CPUStructInit(0,cpu_structs,adam_task);
+  ArmSetGs(cpu_structs);
+}
+#else
 U0 Core0StartMP()
 {//Called by adam during $LK,"start-up",A="FF:::/Kernel/KMain.TC,Core0StartMP"$.
   CTask *task;
@@ -387,3 +448,4 @@ interrupt U0 IntMPCrash()
   "RIP:%P\n",dbg.mp_crash->cpu_num,dbg.mp_crash->task,dbg.mp_crash->rip;
   Panic(dbg.mp_crash->msg,dbg.mp_crash->msg_num);
 }
+#endif

@@ -51,6 +51,9 @@ U0 TaskFocusNext()
   } while (task!=_task);
 }
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/Sched"
+#else
 asm {
 TASK_CONTEXT_SAVE::
 //OUT:	RSI=FS
@@ -279,6 +282,7 @@ RESTORE_FS_TASK:
 	MOV	RSI,FS:CTask.addr[RSI]
 	JMP	I32 RESTORE_RSI_TASK
 }
+#endif
 
 _extern _TASK_CONTEXT_RESTORE U0 TaskContextRestore(); //Restore a task context.
 _extern _YIELD U0 Yield(); //Yield cpu to next task.

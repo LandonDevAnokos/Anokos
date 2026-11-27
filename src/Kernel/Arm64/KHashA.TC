@@ -1,0 +1,109 @@
+//ARM64 version of the asm in $LK,"KHashA",A="FI:::/Kernel/KHashA.TC"$: symbol table hashing and
+//lookup, in TerryC with the same hash function and results as the x86
+//asm. The original labels branch here.
+
+extern U0 HashDel(CHash *tmph);
+
+I64 ArmHashStr(U8 *st)
+{//Same value as x86 SYS_HASH_STR: rotate-with-carry over the bytes.
+  U64 h=0,c;
+  if (!st) return 0;
+  while (c=*st++)
+    h=(h<<1)+(h>>63)+c;
+  return h+(h>>16)+((h>>15)&1);
+}
+
+CHash *ArmHashSingleTableFind2(I64 h,U8 *needle,CHashTable *table,I64 mask,
+	I64 *_instance,CHash ***_pp=NULL)
+{//Walk one bucket. *_instance counts down matches; returns the match
+//that takes it to zero. *_pp gets the link that points to the result.
+  CHash **pp,*tmph;
+  if (!*_instance)
+    return NULL;
+  pp=&table->body[h&table->mask];
+  while (tmph=*pp) {
+    if (tmph->type&mask && !StrCmp(tmph->str,needle)) {
+      if (!--*_instance) {
+	tmph->use_cnt++;
+	if (_pp) *_pp=pp;
+	return tmph;
+      }
+    }
+    pp=&tmph->next;
+  }
+  return NULL;
+}
+
+CHash *ArmHashFind(U8 *needle_str,CHashTable *haystack_table,
+	I64 mask,I64 instance=1)
+{
+  I64 h=ArmHashStr(needle_str);
+  CHash *res;
+  while (haystack_table) {
+    if (res=ArmHashSingleTableFind2(h,needle_str,haystack_table,
+	  mask,&instance))
+      return res;
+    haystack_table=haystack_table->next;
+  }
+  return NULL;
+}
+
+CHash *ArmHashSingleTableFind(U8 *needle_str,CHashTable *haystack_table,
+	I64 mask,I64 instance=1)
+{
+  return ArmHashSingleTableFind2(ArmHashStr(needle_str),needle_str,
+	haystack_table,mask,&instance);
+}
+
+CHash **ArmHashBucketFind(U8 *needle_str,CHashTable *haystack_table)
+{
+  return &haystack_table->body[ArmHashStr(needle_str)&haystack_table->mask];
+}
+
+U0 ArmHashAdd(CHash *tmph,CHashTable *table)
+{
+  CHash **bucket=ArmHashBucketFind(tmph->str,table);
+  PUSHFD
+  CLI
+  tmph->next=*bucket;
+  *bucket=tmph;
+  POPFD
+}
+
+U0 ArmHashAddAfter(CHash *tmph,CHash *pred,CHashTable *)
+{
+  PUSHFD
+  CLI
+  tmph->next=pred->next;
+  pred->next=tmph;
+  POPFD
+}
+
+Bool ArmHashRemDel(CHash *tmph,CHashTable *table,I64 instance=1)
+{
+  CHash **pp,*res;
+  if (!tmph)
+    return FALSE;
+  PUSHFD
+  CLI
+  res=ArmHashSingleTableFind2(ArmHashStr(tmph->str),tmph->str,table,
+	tmph->type&~HTG_FLAGS_MASK,&instance,&pp);
+  if (res && res==tmph) {
+    *pp=tmph->next;
+    POPFD
+    HashDel(tmph);
+    return TRUE;
+  }
+  POPFD
+  return FALSE;
+}
+
+asm {
+_HASH_STR::		B	&ArmHashStr
+_HASH_FIND::		B	&ArmHashFind
+_HASH_SINGLE_TABLE_FIND::	B	&ArmHashSingleTableFind
+_HASH_BUCKET_FIND::	B	&ArmHashBucketFind
+_HASH_ADD::		B	&ArmHashAdd
+_HASH_ADD_AFTER::	B	&ArmHashAddAfter
+_HASH_REM_DEL::		B	&ArmHashRemDel
+}

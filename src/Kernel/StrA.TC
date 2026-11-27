@@ -17,6 +17,9 @@ U0 PutHex(I64 num,I64 width)
   "%s",buf;
 }
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/StrA"
+#else
 asm {
 // IN:	RAX=NUM TO PRINT
 PUT_HEX_U64::
@@ -305,6 +308,7 @@ _STRIMATCH::
 	POP	RBP
 	RET1	16
 }
+#endif
 _extern _STRCMP I64 StrCmp(
 	U8 *st1,U8 *st2); //Compare two strings.
 _extern _STRICMP I64 StrICmp(

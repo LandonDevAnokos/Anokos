@@ -1,3 +1,6 @@
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/KExcept"
+#else
 asm {
 #assert !((REGG_LOCAL_NON_PTR_VARS|REGG_LOCAL_VARS)&~0xFCC0)
 _TEST_EXCEPT::
@@ -37,6 +40,7 @@ _SAVE_EXCEPT_REGS::
 	POP	RBP
 	RET1	8
 }
+#endif
 
 _extern _TEST_EXCEPT U0 TestExcept();
 _extern _TAKE_EXCEPT U0 TakeExcept();

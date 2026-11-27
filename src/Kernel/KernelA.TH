@@ -3417,7 +3417,12 @@ public class CCPU //The Gs segment reg points to current CCPU.
 #help_index "Memory/Page Tables"
 #define MEM_MIN_MEG		512 //512 Meg minimum.
 
+#ifdef ARCH_ARM64
+//ARM64 images are relocated at boot; the fixed area is part of the image.
+#define SYS_FIXED_AREA		((&arm64_sys_fixed)(U8 *))
+#else
 #define SYS_FIXED_AREA		0x100000
+#endif
 #define SYS_16MEG_AREA_LIMIT	0x1000000
 public class CSysFixedArea
 {

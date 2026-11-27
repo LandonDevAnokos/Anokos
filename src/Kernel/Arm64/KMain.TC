@@ -1,9 +1,9 @@
 //ARM64 kernel main: continued from $LK,"KStart",A="FF:::/Kernel/Arm64/KStart.TC,KMainArm64"$.
 //
-//This is the ARM64 counterpart of $LK,"KMain",A="MN:KMain"$ and grows toward it as more of the
-//kernel is converted. Right now it brings up the board and the serial
-//console, checks the code the ARM64 compiler back end makes, and runs a
-//small serial monitor.
+//KMainArm64 does what x86's KStart64 does (boot CPU, Adam's heap and
+//task) and KMainArm64B what $LK,"KMain",A="MN:KMain"$ does, for the parts converted so
+//far. Then it tests memory and tasks and runs a small serial monitor
+//until the command line runs on ARM64.
 
 U0 ArmBanner()
 {
@@ -27,7 +27,7 @@ U0 ArmBanner()
   ArmSerPutS("\nImage:   loaded at ");
   ArmSerPutHex(arm64_load_base);
   ArmSerPutS("\nDTB:     ");
-  if (arm64_dtb)
+  if (ArmFdtValid(arm64_dtb))
     ArmSerPutHex(arm64_dtb);
   else
     ArmSerPutS("none");
@@ -44,7 +44,7 @@ U0 ArmBanner()
 }
 
 //************************************
-//Back end self test: a few things the code generator must get right.
+//Code generator self test.
 I64 arm_test_glbl=5;
 I64 arm_test_tbl[4]={10,20,30,40};
 U8 *arm_test_strs[3]={"zero","one","two"};
@@ -109,6 +109,7 @@ I64 ArmSelfTest()
   fails+=ArmTest("glbl",arm_test_glbl,5);
   arm_test_glbl+=7;
   fails+=ArmTest("glbl+=",arm_test_glbl,12);
+  arm_test_glbl=5;
   fails+=ArmTest("tbl",arm_test_tbl[2],30);
   fails+=ArmTest("str ptr",arm_test_strs[1][1],'n');
   j=0;
@@ -155,62 +156,289 @@ I64 ArmSelfTest()
   d=d*4.0+0.5;
   fails+=ArmTest("F64",ToI64(d*10),65);
   fails+=ArmTest("F64 cmp",d>6.0,1);
+  fails+=ArmTest("Exp/Ln",ToI64(Round(Ln(Exp(3.0))*1000)),3000);
+  fails+=ArmTest("Pow10",ToI64(Pow10(5)),100000);
   return fails;
 }
 
 //************************************
+//Memory and task tests.
+I64 arm_task_runs;
+
+U0 ArmTestTask(U8 *data)
+{
+  I64 i;
+  for (i=0;i<3;i++) {
+    "  %s: step %d (jiffy %d)\n",data,i,cnts.jiffies;
+    lock arm_task_runs++;
+    Sleep(20);
+  }
+}
+
+I64 ArmMemTest()
+{//Returns number of failures.
+  I64 fails=0,i,used0=Fs->data_heap->used_u8s;
+  U8 *ptrs[64],*big,*st;
+  for (i=0;i<64;i++) {
+    ptrs[i]=MAlloc(i*37+1);
+    MemSet(ptrs[i],i,i*37+1);
+  }
+  for (i=0;i<64;i++)
+    if (MSize(ptrs[i])<i*37+1 || ptrs[i][i*37]!=i)
+      fails++;
+  for (i=0;i<64;i+=2)
+    Free(ptrs[i]);
+  for (i=1;i<64;i+=2)
+    Free(ptrs[i]);
+  big=MAlloc(4*1024*1024);
+  MemSet(big,0xA5,4*1024*1024);
+  if (big[4*1024*1024-1]!=0xA5)
+    fails++;
+  Free(big);
+  st=StrNew("ARM64 heap");
+  if (StrCmp(st,"ARM64 heap"))
+    fails++;
+  Free(st);
+  if (Fs->data_heap->used_u8s!=used0) {
+    "  heap leak: %d bytes\n",Fs->data_heap->used_u8s-used0;
+    fails++;
+  }
+  return fails;
+}
+
+I64 ArmExceptTest()
+{
+  I64 res=0;
+  try {
+    throw('ArmTest',TRUE);
+    res=1; //Not reached
+  } catch {
+    if (Fs->except_ch=='ArmTest')
+      res=2;
+    Fs->catch_except=TRUE;
+  }
+  return res;
+}
+
+//************************************
+U0 ArmTaskRep()
+{
+  CTask *task=Fs;
+  do {
+    "  %-24ts swaps:%d\n",task->task_name,task->swap_cnter;
+    task=task->next_task;
+  } while (task!=Fs);
+}
+
 U0 ArmMonitor()
-{//Tiny serial monitor until the real command line runs on ARM64.
+{//Tiny serial monitor until the command line runs on ARM64.
   I64 ch;
-  ArmSerPutS("\nSerial monitor: h help, r reboot, o power off, t self test\n> ");
+  "\nSerial monitor: h help, r reboot, o power off, t self test, "
+	"m memory, k tasks\n> ";
   while (TRUE) {
-    if ((ch=ArmSerGetChar)<0)
+    if ((ch=ArmSerGetChar)<0) {
+      Yield;
       goto mon_next;
-    ArmSerPutChar(ch);
+    }
+    '' ch;
     switch (ch) {
       case 'h':
-	ArmSerPutS("\nh help  r reboot  o power off  t self test  i info\n");
+	"\nh help  r reboot  o power off  t self test  m memory  "
+	      "k tasks  i info\n";
 	break;
       case 'r':
-	ArmSerPutS("\nRebooting\n");
+	"\nRebooting\n";
 	ArmReboot;
 	break;
       case 'o':
-	ArmSerPutS("\nPower off\n");
+	"\nPower off\n";
 	ArmPowerOff;
 	break;
       case 't':
-	ArmSerPutS("\nSelf test: ");
-	ArmSerPutDec(ArmSelfTest);
-	ArmSerPutS(" failures\n");
+	"\nSelf test: %d failures\n",ArmSelfTest;
+	break;
+      case 'm':
+	"\n";
+	ArmMemRep;
+	"Code heap %d KiB used",sys_code_bp->used_u8s>>10;
+	if (sys_data_bp)
+	  ", data heap %d KiB used",sys_data_bp->used_u8s>>10;
+	"\n";
+	break;
+      case 'k':
+	"\nTasks on CPU%d:\n",Gs->num;
+	ArmTaskRep;
 	break;
       case 'i':
 	ArmBanner;
 	break;
       case '\r':
-	ArmSerPutS("\n");
+	"\n";
 	break;
       default:
 	goto mon_next;
     }
-    ArmSerPutS("> ");
+    "> ";
 mon_next:
   }
 }
 
+U0 Reboot()
+{//Hardware reset.
+  ArmReboot;
+}
+
+//************************************
+U0 ArmSysGlblsInit()
+{//The parts of x86 SysGlblsInit that apply to ARM64.
+  I64 i,j;
+  sys_cache_line_width=64;
+  sys_focus_task=Fs;
+  QueInit(&sys_macro_head);
+  blkdev.dft_iso_filename	=AStrNew(DFT_ISO_FILENAME);
+  blkdev.dft_iso_c_filename	=AStrNew(DFT_ISO_C_FILENAME);
+  blkdev.tmp_filename		=AStrNew("~/Tmp.DD.Z");
+  blkdev.first_hd_drv_let='C';
+  blkdev.first_dvd_drv_let='T';
+  blkdev.boot_drv_let='B';
+  DbgMode(ON);
+  rev_bits_table=CAlloc(256);
+  set_bits_table=CAlloc(256);
+  for (i=0;i<256;i++)
+    for (j=0;j<8;j++) {
+      if (Bt(&i,7-j))	LBts(rev_bits_table+i,j);
+      if (Bt(&i,j))	set_bits_table[i]++;
+    }
+  ext=CAlloc(EXT_EXTS_NUM*sizeof(U8 *));
+  fp_getstr2=&SysGetStr2;
+  KeyDevInit;
+  pow10_I64=CAlloc(sizeof(F64)*(308+308+1));
+  for (i=-308;i<309;i++)
+    pow10_I64[i+309]=Pow10(i);
+  QueInit(&scrncast.snd_head);
+  ProgressBarsRst;
+  QueInit(&dev.pci_head);
+  dev.mem64_ptr=mem_mapped_space;
+  dbg.fun_seg_cache=CAlloc(FUN_SEG_CACHE_SIZE*sizeof(CFunSegCache));
+//The generic timer does the HPET's job (see $LK,"HPET",A="MN:HPET"$).
+  cnts.HPET_freq=ArmCntFrq;
+  cnts.HPET_kHz_freq=cnts.HPET_freq/1000;
+  cnts.HPET_initial=HPET;
+  scrncast.t0_now=Now;
+  scrncast.t0_tS=tS;
+}
+
+U0 ArmTextInit()
+{//No framebuffer yet: an 80x25 text grid for code that sizes by it.
+  text.font=sys_font_std;
+  text.aux_font=sys_font_cyrillic;
+  text.cols=80;
+  text.rows=25;
+}
+
+U0 ArmDtbSave()
+{//Keep the device tree in Adam's heap before the RAM it's in is handed
+//out by $LK,"BlkPoolsInit",A="MN:BlkPoolsInit"$.
+  I64 size=ArmFdtSize(arm64_dtb);
+  U8 *copy;
+  if (size) {
+    copy=AMAlloc(size);
+    MemCpy(copy,arm64_dtb,size);
+    arm64_dtb=copy;
+  } else
+    arm64_dtb=NULL;
+}
+
+U0 KMainArm64B()
+{//Continued from $LK,"KMainArm64",A="MN:KMainArm64"$, on Adam's stack: x86 $LK,"KMain",A="MN:KMain"$.
+  I64 fails=0,i;
+  CTask *t1,*t2;
+  adam_task=Fs;
+  ArmDtbSave;
+  BlkPoolsInit;
+  ArmTextInit;
+  ArmSysGlblsInit;
+  Mem32DevInit;
+  UncachedAliasAlloc;
+  StrCpy(Fs->task_name,"Adam Task CPU00");
+  StrCpy(Fs->task_title,Fs->task_name);
+  Fs->title_src=TTS_TASK_NAME;
+  Fs->win_right=text.cols-2;
+  Fs->win_top++;
+  TaskDerivedValsUpdate;
+  SysDefinesLoad;
+  Core0Init;
+  BlkDevsInitAll; //No drives yet: there are no ARM64 storage drivers
+
+  LBts(&sys_run_level,RLf_RAW);
+  "\nAnokos ARM64 (TempleOS V%5.3f base)\t%D %T\n",
+	sys_os_version,sys_compile_time,sys_compile_time;
+  "Now: %D %T\n",Now,Now;
+  ArmMemRep;
+  "Heaps: code %d MiB",sys_code_bp->alloced_u8s>>20;
+  if (sys_data_bp)
+    ", data %d MiB",sys_data_bp->alloced_u8s>>20;
+  "\n";
+
+  "Compiler self test: ";
+  i=ArmSelfTest;
+  if (i) "FAILED %d\n",i; else "all passed\n";
+  fails+=i;
+
+  "Memory test: ";
+  i=ArmMemTest;
+  if (i) "FAILED %d\n",i; else "passed\n";
+  fails+=i;
+
+  "Exception test: ";
+  i=ArmExceptTest;
+  if (i!=2) {
+    "FAILED (%d)\n",i;
+    fails++;
+  } else
+    "passed\n";
+
+  "Task test:\n";
+  arm_task_runs=0;
+  t1=Spawn(&ArmTestTask,"task A","Test A");
+  t2=Spawn(&ArmTestTask,"task B","Test B");
+  i=cnts.jiffies;
+  while ((TaskValidate(t1) || TaskValidate(t2)) &&
+	cnts.jiffies-i<JIFFY_FREQ*5)
+    Yield;
+  if (arm_task_runs!=6 || TaskValidate(t1) || TaskValidate(t2)) {
+    "Task test FAILED (%d steps)\n",arm_task_runs;
+    fails++;
+  } else
+    "Task test passed (both tasks ran and exited)\n";
+
+  if (fails)
+    "@@ARM64 BOOT FAILED %d\n",fails;
+  else
+    "@@ARM64 BOOT OK\n";
+  ArmMonitor;
+}
+
 U0 KMainArm64(U8 *dtb)
-{//Continued from $LK,"KStart",A="FF:::/Kernel/Arm64/KStart.TC,KMainArm64"$
-  I64 fails;
+{//Continued from $LK,"KStart",A="FF:::/Kernel/Arm64/KStart.TC,KMainArm64"$, on the boot stack.
+//Like x86 $LK,"KStart64",A="FF:::/Kernel/KStart64.TC,CPUStructInit"$: boot CPU, Adam's heap and task.
+  CHeapCtrl *hc=&arm64_sys_fixed.adam_hc;
+  CTask *adam=&arm64_sys_fixed.adam;
   no_warn dtb;
   ArmBoardInit;
   ArmSerInit;
   ArmBanner;
-  ArmSerPutS("Compiler self test: ");
-  fails=ArmSelfTest;
-  if (fails)
-    ArmSerPutS("FAILED\n");
-  else
-    ArmSerPutS("all passed\n");
-  ArmSerPutS("@@ARM64 BOOT OK\n");
-  ArmMonitor;
+  ArmMemInit;
+
+  ArmSetFs(adam); //Before TaskInit, which reads Fs
+  ArmSetGs(CPUStructInit(0,&arm64_sys_fixed.boot_cpu,adam));
+  hc->bp=sys_code_bp;
+  hc->hc_signature=HEAP_CTRL_SIGNATURE_VAL;
+  hc->next_um=hc->last_um=(&hc->next_um)(U8 *)-offset(CMemUsed.next);
+  hc->mem_task=adam;
+  adam->code_heap=adam->data_heap=hc;
+  adam->task_signature=TASK_SIGNATURE_VAL;
+  LBts(&sys_run_level,RLf_16MEG_ADAM_HEAP_CTRL);
+  TaskInit(adam,MEM_ADAM_STK);
+  ArmSwitchStk(adam->rsp,&KMainArm64B);
 }
