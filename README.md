@@ -7,6 +7,7 @@
 <p align="center">
   An open-source operating system descended from TempleOS.<br>
   <a href="https://landondevanokos.github.io/Anokos/">Website</a> ·
+  <a href="https://landondevanokos.github.io/Anokos/manual/">Docs</a> ·
   <a href="https://landondevanokos.github.io/Anokos/code-map/">Code City</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -43,7 +44,8 @@ See [BUILDING.md](BUILDING.md) for how the build works and how to boot on real h
 - [`src/`](src/): the operating system: `Kernel/`, `Compiler/`, the `Anokos/` system layer
   (including the terminal), `Apps/`, `Demo/` and `Doc/`
 - [`tools/`](tools/): build tools
-- [`docs/`](docs/): the website and Code City
+- [`docs/`](docs/): the website and Code City; [`docs/manual/`](docs/manual/) is the manual on
+  how the kernel and OS work
 - [`TempleOS/`](TempleOS/): the original TempleOS ISO, kept unmodified
 
 ## Roadmap

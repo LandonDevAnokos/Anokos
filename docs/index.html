@@ -79,6 +79,8 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 22px; }
   .card h3 { font-size: 16.5px; margin: 0 0 8px; font-weight: 600; }
   .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  a.card { display: block; text-decoration: none; }
+  a.card:hover { border-color: #55555c; }
 
   .roadmap { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   .roadmap li { display: grid; grid-template-columns: 56px 1fr auto; gap: 16px; align-items: start;
@@ -132,6 +134,7 @@
         <a class="hide-sm" href="#about">About</a>
         <a class="hide-sm" href="#roadmap">Roadmap</a>
         <a class="hide-sm" href="#start">Get started</a>
+        <a href="manual/">Docs</a>
         <a href="code-map/">Code City</a>
         <a href="https://github.com/LandonDevAnokos/Anokos">GitHub</a>
       </div>
@@ -149,6 +152,7 @@
       change and improve.</p>
     <div class="actions">
       <a class="btn primary" href="https://github.com/LandonDevAnokos/Anokos">View on GitHub</a>
+      <a class="btn secondary" href="manual/">Read the docs</a>
       <a class="btn secondary" href="code-map/">Explore the Code City</a>
     </div>
     <figure class="screen" style="margin-left:0;margin-right:0;margin-bottom:0">
@@ -233,6 +237,31 @@
           </g>
         </svg>
       </a>
+    </div>
+  </section>
+
+  <section id="docs">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="section-lede">The Anokos manual explains the kernel and the rest of the system for programmers who
+        want to read or change it, with links into the real source.</p>
+      <div class="grid">
+        <a class="card" href="manual/#overview"><h3>How Anokos is put together</h3>
+          <p>One address space, everything compiled by its own compiler, and where each part lives.</p></a>
+        <a class="card" href="manual/#boot"><h3>Booting</h3>
+          <p>From the boot loader through real, protected and long mode to the terminal.</p></a>
+        <a class="card" href="manual/#tasks"><h3>Tasks and scheduling</h3>
+          <p>Tasks, the scheduler, jobs and messages, and what runs when nothing else does.</p></a>
+        <a class="card" href="manual/#memory"><h3>Memory</h3>
+          <p>The identity map, block pools, per-task heaps and the allocator.</p></a>
+        <a class="card" href="manual/#compiler"><h3>The compiler</h3>
+          <p>How TerryC becomes x86-64 or ARM64 machine code, ahead of time or just in time.</p></a>
+        <a class="card" href="manual/#arm64"><h3>The ARM64 port</h3>
+          <p>How the same kernel source runs on ARM64 and the Raspberry Pi.</p></a>
+      </div>
+      <div class="actions" style="margin-top:28px">
+        <a class="btn primary" href="manual/">Browse the manual</a>
+      </div>
     </div>
   </section>
 

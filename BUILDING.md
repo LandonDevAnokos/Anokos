@@ -102,4 +102,8 @@ The website in [`docs/`](docs/) is served by GitHub Pages from the `main` branch
 python tools/codemap.py
 ```
 
+The manual (`docs/manual/`) is a set of Markdown pages about how the kernel and OS work.
+`docs/manual/index.html` renders them on the website with a sidebar and search; add new pages to
+its `PAGES` list.
+
 To preview the site, run `python -m http.server --directory docs` and open `http://localhost:8000`.
