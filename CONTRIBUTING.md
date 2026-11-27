@@ -9,6 +9,8 @@ testing on real hardware, reviews, bug reports or documentation. Contributions w
 are welcome too; please review and test them as carefully as your own work, and mention it in your
 pull request.
 
+AI coding agents should read [AGENTS.md](AGENTS.md) first.
+
 ## Workflow
 
 1. Fork the repository and create a branch from `main` (`feature/short-name` or `fix/short-name`).
