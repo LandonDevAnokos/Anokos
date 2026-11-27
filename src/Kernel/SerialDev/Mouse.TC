@@ -75,6 +75,9 @@ U0 MsInit()
   GridInit;
 }
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/MsHard"
+#else
 U0 MsHardPktRead()
 {
   U8 j;
@@ -182,6 +185,7 @@ Bool MsHardRst()
       Fs->catch_except=TRUE;
   return res;
 }
+#endif
 
 U0 MsHardSpeedSet()
 {
@@ -291,6 +295,9 @@ U0 KbdMsRst()
   kbd.rst=FALSE;
 }
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/Mouse"
+#else
 Bool MsHardDrvrInstall(I64 dummy=0) //can be spawned
 {
   no_warn dummy;
@@ -344,6 +351,7 @@ U0 KbdMsHndlr(Bool poll_kbd,Bool poll_ms)
     }
   }
 }
+#endif
 
 U0 KbdMsInit()
 {

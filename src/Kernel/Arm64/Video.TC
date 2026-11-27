@@ -1,0 +1,238 @@
+//ARM64 framebuffer: what the VBE code in KStart16 and $LK,"SysGrInit",A="MN:SysGrInit"$ do on x86.
+//
+//QEMU virt: ramfb (start QEMU with -device ramfb). The framebuffer is in
+//  RAM and its address goes to QEMU through the fw_cfg file "etc/ramfb".
+//  Size: "fb=WIDTHxHEIGHT" on the kernel command line (-append), else
+//  1920x1080.
+//Raspberry Pi: the VideoCore firmware allocates it (mailbox property
+//  interface), at the monitor's native size when it knows it.
+//Either way the result goes into the same $LK,"vbe",A="MN:CVbeGlbls"$ globals, so the kernel's
+//raw console ($LK,"VbeRawPutChar",A="MN:VbeRawPutChar"$) and the Anokos terminal work unchanged.
+//32-bit pixels, 0x00RRGGBB.
+
+#define FW_CFG_DATA		0x00
+#define FW_CFG_SEL		0x08
+#define FW_CFG_DMA		0x10
+#define FW_CFG_SIGNATURE	0x0000
+#define FW_CFG_FILE_DIR		0x0019
+#define FW_CFG_DMA_SELECT	0x08
+#define FW_CFG_DMA_WRITE	0x10
+#define DRM_FORMAT_XRGB8888	0x34325258 //'XR24'
+
+class CArmFwCfgDma
+{
+  U32	control,length;
+  U64	addr;
+};
+
+class CArmRamfbCfg
+{//Big-endian, as QEMU reads it.
+  U64	addr;
+  U32	fourcc,flags,width,height,stride;
+};
+
+U8 *ArmFwCfgBase()
+{
+  U8 *reg;
+  I64 len;
+  if (arm64_dtb && (reg=ArmFdtProp(arm64_dtb,"fw-cfg","reg",&len)) && len>=16)
+    return ArmBe32(reg)<<32|ArmBe32(reg+4);
+  if (arm_board.num==BOARD_QEMU_VIRT)
+    return 0x09020000;
+  return NULL;
+}
+
+U0 ArmFwCfgRead(U8 *fw,U8 *buf,I64 n)
+{
+  while (n--)
+    *buf++=*(fw+FW_CFG_DATA);
+}
+
+Bool ArmFwCfgDmaWrite(U8 *fw,I64 key,U8 *data,I64 len)
+{
+  CArmFwCfgDma *dma=MAllocAligned(sizeof(CArmFwCfgDma),16);
+  I64 i;
+  Bool res=FALSE;
+  dma->control=EndianU32(key<<16|FW_CFG_DMA_SELECT|FW_CFG_DMA_WRITE);
+  dma->length=EndianU32(len);
+  dma->addr=EndianI64(data);
+  ArmDCacheFlush(data,len);
+  ArmDCacheFlush(dma,sizeof(CArmFwCfgDma));
+//64-bit big-endian register; writing the low half starts the transfer.
+  *(fw+FW_CFG_DMA)(U32 *)=EndianU32(dma(I64)>>32);
+  *(fw+FW_CFG_DMA+4)(U32 *)=EndianU32(dma(I64)&0xFFFFFFFF);
+  for (i=0;i<1000000;i++) {
+    ArmDCacheFlush(dma,sizeof(CArmFwCfgDma));
+    if (dma->control&EndianU32(1))
+      break;
+    if (!dma->control) {
+      res=TRUE;
+      break;
+    }
+  }
+  Free(dma);
+  return res;
+}
+
+Bool ArmRamfbInit(I64 w,I64 h,U32 **_fb)
+{
+  U8 *fw=ArmFwCfgBase,sig[4],name[57];
+  I64 i,cnt,key=0,size;
+  U16 sel;
+  CArmRamfbCfg *cfg;
+  U32 *fb;
+  if (!fw) return FALSE;
+  *(fw+FW_CFG_SEL)(U16 *)=EndianU16(FW_CFG_SIGNATURE);
+  ArmFwCfgRead(fw,sig,4);
+  if (MemCmp(sig,"QEMU",4))
+    return FALSE;
+  *(fw+FW_CFG_SEL)(U16 *)=EndianU16(FW_CFG_FILE_DIR);
+  ArmFwCfgRead(fw,&cnt,4);
+  cnt=EndianU32(cnt);
+  for (i=0;i<cnt;i++) {
+    ArmFwCfgRead(fw,&size,4);
+    ArmFwCfgRead(fw,&sel,2);
+    ArmFwCfgRead(fw,name,2); //Reserved
+    ArmFwCfgRead(fw,name,56);
+    name[56]=0;
+    if (!StrCmp(name,"etc/ramfb"))
+      key=EndianU16(sel);
+  }
+  if (!key) return FALSE; //QEMU started without -device ramfb
+  fb=MAllocAligned(w*h*4,4096,adam_task);
+  MemSetU32(fb,0,w*h);
+  cfg=MAllocAligned(sizeof(CArmRamfbCfg),16);
+  cfg->addr=EndianI64(fb);
+  cfg->fourcc=EndianU32(DRM_FORMAT_XRGB8888);
+  cfg->flags=0;
+  cfg->width=EndianU32(w);
+  cfg->height=EndianU32(h);
+  cfg->stride=EndianU32(w*4);
+  i=ArmFwCfgDmaWrite(fw,key,cfg,sizeof(CArmRamfbCfg));
+  Free(cfg);
+  if (!i) {
+    Free(fb);
+    return FALSE;
+  }
+  *_fb=fb;
+  return TRUE;
+}
+
+#define ARM64_PTE_ATTR_MASK	0x1C
+#define ARM64_PTE_ATTR_NC	0x08 //AttrIdx 2, Normal non-cacheable
+
+Bool ArmFbUncache(U8 *fb,I64 len)
+{//Make the framebuffer's 2 MiB blocks non-cacheable, so the display
+//sees every write (x86 maps the VBE framebuffer uncached too). Only for
+//blocks in a GiB the identity map splits; FALSE if it isn't one.
+  U64 *l1=&arm64_pt_l1,*l2,pte;
+  I64 a,i;
+  for (a=fb&~0x1FFFFF;a<fb+len;a+=0x200000)
+    if (a>=1<<39 || l1[a>>30]&3!=3)
+      return FALSE;
+  ArmDCacheFlush(fb,len);
+  for (a=fb&~0x1FFFFF;a<fb+len;a+=0x200000) {
+    l2=l1[a>>30]&0xFFFFFFFFF000;
+    i=a>>21&511;
+    pte=l2[i]&~ARM64_PTE_ATTR_MASK|ARM64_PTE_ATTR_NC;
+    l2[i]=0; //Break before make
+    ArmTlbFlush;
+    l2[i]=pte;
+  }
+  ArmTlbFlush;
+  return TRUE;
+}
+
+Bool ArmMboxFbInit(I64 *_w,I64 *_h,I64 *_pitch,U32 **_fb)
+{//VideoCore mailbox framebuffer (all Raspberry Pis).
+  U32 *m=(arm_mbox_raw+15)&~15;
+  I64 i,w=*_w,h=*_h,alloc,pitch;
+  if (!arm_board.mbox_base) return FALSE;
+  if (!w || !h) {//Native size: what the firmware read from the monitor
+    MemSet(m,0,64);
+    m[0]=8*4;
+    m[2]=0x00040003;
+    m[3]=8;
+    if (ArmMboxCall(m) && m[5] && m[6]) {
+      w=m[5];
+      h=m[6];
+    } else {
+      w=1280;
+      h=720;
+    }
+  }
+  MemSet(m,0,160);
+  i=2;
+  m[i++]=0x00048003; m[i++]=8; m[i++]=0; m[i++]=w; m[i++]=h; //Physical
+  m[i++]=0x00048004; m[i++]=8; m[i++]=0; m[i++]=w; m[i++]=h; //Virtual
+  m[i++]=0x00048009; m[i++]=8; m[i++]=0; m[i++]=0; m[i++]=0; //Offset
+  m[i++]=0x00048005; m[i++]=4; m[i++]=0; m[i++]=32;	    //Depth
+  m[i++]=0x00048006; m[i++]=4; m[i++]=0; m[i++]=1;	    //RGB
+  alloc=i;
+  m[i++]=0x00040001; m[i++]=8; m[i++]=0; m[i++]=4096; m[i++]=0;
+  pitch=i;
+  m[i++]=0x00040008; m[i++]=4; m[i++]=0; m[i++]=0;
+  m[i++]=0;
+  m[0]=i*4;
+  if (!ArmMboxCall(m) || !m[alloc+3])
+    return FALSE;
+  *_w=m[5];
+  *_h=m[6];
+  *_pitch=m[pitch+3];
+  if (!*_pitch) *_pitch=*_w*4;
+  *_fb=m[alloc+3]&0x3FFFFFFF; //VideoCore bus address to ARM physical
+  ArmFbUncache(*_fb,*_h**_pitch);
+  return TRUE;
+}
+
+U0 ArmFbSize(I64 *_w,I64 *_h)
+{//"fb=WxH" on the kernel command line, else 0x0 (board default).
+  U8 *args,*st;
+  *_w=*_h=0;
+  if (arm64_dtb && (args=ArmFdtProp(arm64_dtb,"chosen","bootargs")) &&
+	(st=StrMatch("fb=",args))) {
+    *_w=Str2I64(st+3);
+    if (st=StrFirstOcc(st,"x"))
+      *_h=Str2I64(st+1);
+  }
+}
+
+Bool ArmVideoInit()
+{//Find a framebuffer and set up vbe like x86 VBE does. FALSE: none.
+  I64 w,h,pitch;
+  U32 *fb=NULL;
+  ArmFbSize(&w,&h);
+  if (arm_board.num==BOARD_QEMU_VIRT) {
+    if (!w || !h) {
+      w=1920;
+      h=1080;
+    }
+    pitch=w*4;
+    if (!ArmRamfbInit(w,h,&fb))
+      return FALSE;
+  } else if (!ArmMboxFbInit(&w,&h,&pitch,&fb))
+    return FALSE;
+
+  vbe.fb_phys=vbe.fb=fb;
+  vbe.mode=0;
+  vbe.width=w;
+  vbe.height=h;
+  vbe.pitch=pitch;
+  vbe.bpp=32;
+  vbe.pref_width=w;
+  vbe.pref_height=h;
+  vbe.scale=MaxI64(1,vbe.height/400);
+  vbe.cols=vbe.width/(FONT_WIDTH*vbe.scale);
+  vbe.rows=vbe.height/(FONT_HEIGHT*vbe.scale);
+  vbe.fg=0xFFFFFF;
+  vbe.bg=0x000000;
+  VbeRawCls;
+//Legacy 640x480 text grid, kept for code that still sizes windows by it.
+  text.cols=GR_WIDTH/FONT_WIDTH;
+  text.rows=GR_HEIGHT/FONT_HEIGHT;
+  text.raw_scrn_image=CAlloc(GR_WIDTH*GR_HEIGHT/8);
+  text.border_chars[2] (I64)=0x0908070605040302;
+  text.border_chars[10](U32)=0x0D0C0B0A;
+  LBts(&sys_run_level,RLf_VBE);
+  return TRUE;
+}

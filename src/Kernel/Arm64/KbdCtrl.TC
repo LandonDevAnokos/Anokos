@@ -1,0 +1,32 @@
+//ARM64 version of the 8042 keyboard controller code in $LK,"Keyboard",A="FI:::/Kernel/SerialDev/Keyboard.TC"$.
+//There is no 8042 on ARM64 boards: keys come from the serial console
+//(see $LK,"Arm64/Keyboard",A="FI:::/Kernel/Arm64/Keyboard.TC"$), so these talk to nothing.
+
+U0 KbdCmdSend(I64 port,U8 val)
+{
+  no_warn port,val;
+}
+
+I64 KbdCmdRead()
+{
+  throw('Kbd');
+}
+
+U0 KbdCmdFlush()
+{
+}
+
+U0 KbdLEDsSet(I64 sc)
+{//A serial console has no LEDs.
+  no_warn sc;
+}
+
+U0 KbdMsCmdAck(...)
+{
+  no_warn argc,argv;
+}
+
+U0 KbdTypeMatic(U8 delay)
+{//Key repeat is the serial terminal's.
+  no_warn delay;
+}

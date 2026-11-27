@@ -161,7 +161,9 @@ ARM64_ENTRY::
 
 //************************************
 //Early identity map: 4 KiB granule, 39-bit addresses, 1 GiB blocks, and
-//2 MiB blocks in the two GiBs where the Raspberry Pis mix RAM and devices.
+//2 MiB blocks in the two GiBs where the Raspberry Pis mix RAM and devices
+//and in a Pi's GiB 0, where the firmware puts the framebuffer (made
+//non-cacheable by $LK,"ArmFbUncache",A="MN:ArmFbUncache"$).
 ARM64_MMU_INIT::
 	MOV	X9,X30			//Calls ARM64_MMU_L2 below
 //Pick the layout: loaded at/above 1 GiB -> QEMU virt, else a Pi by CPU.
@@ -207,6 +209,8 @@ ARM64_MMU_INIT::
 	BEQ	@@15
 	CMP	X15,3
 	BEQ	@@16
+	CMP	X15,4
+	BEQ	@@19
 	MOV	X2,ARM64_PTE_DEVICE
 	ORR	X2,X2,X1
 	B	@@18
@@ -218,6 +222,9 @@ ARM64_MMU_INIT::
 	B	@@17
 @@16:	ADR	X2,ARM64_PT_L2B		//GiB 3, devices from 0xFC000000
 	MOV	X3,480
+	B	@@17
+@@19:	ADR	X2,ARM64_PT_L2A		//GiB 0 in 2 MiB blocks, all RAM
+	MOV	X3,512
 @@17:	BL	ARM64_MMU_L2
 	ORR	X2,X2,ARM64_PTE_TABLE
 @@18:	STR	X2,[X13,X14,LSL 3]
@@ -225,7 +232,8 @@ ARM64_MMU_INIT::
 	CMP	X14,512
 	BLO	@@10
 
-	MOV	X1,0xFF00		//MAIR: 0 Device-nGnRnE, 1 Normal WB
+	MOV	X1,0x44FF00		//MAIR: 0 Device-nGnRnE, 1 Normal WB,
+					//2 Normal non-cacheable
 	MSR	MAIR_EL1,X1
 	MRS	X1,ID_AA64MMFR0_EL1	//IPS=PARange
 	AND	X1,X1,7
@@ -265,12 +273,13 @@ ARM64_MMU_L2::
 	RET
 
 //Kind of each of the first 16 GiB per layout: 0 device, 1 RAM,
-//2 GiB 0 split at 0x3F000000, 3 GiB 3 split at 0xFC000000
+//2 GiB 0 split at 0x3F000000, 3 GiB 3 split at 0xFC000000,
+//4 GiB 0 in 2 MiB blocks (RAM)
 ARM64_LAYOUT_KINDS::
 	DU8	0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1;	//virt
 	DU8	2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0;	//Pi 3
-	DU8	1,1,1,3,1,1,1,1,0,0,0,0,0,0,0,0;	//Pi 4
-	DU8	1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1;	//Pi 5
+	DU8	4,1,1,3,1,1,1,1,0,0,0,0,0,0,0,0;	//Pi 4
+	DU8	4,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1;	//Pi 5
 
 	ALIGN	4096,0
 ARM64_PT_L1::	DU8	4096 DUP(0);
@@ -514,6 +523,11 @@ _ARM_CNTP_CTL::				//U0 ArmCntpCtl(I64 ctl): 1=on, 2=masked
 		ISB
 		RET
 _ARM_DSB::	DSB	SY
+		RET
+_ARM_TLB_FLUSH::DSB	ISH		//After changing page table entries
+		TLBI	VMALLE1
+		DSB	ISH
+		ISB
 		RET
 _ARM_HVC::	LDP	X0,X1,[SP]	//HVC/SMC call: fn,a1,a2,a3 (PSCI)
 		LDP	X2,X3,[SP,16]

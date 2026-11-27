@@ -348,27 +348,60 @@ ARM64_MACHINES = {
 }
 
 
-def run_arm64(board, headless, wait, img=None):
+def send_serial_keys(ser_sock, keys):
+    """Type `keys` on the ARM64 serial console (the kernel's keyboard)."""
+    import socket
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.connect(ser_sock)
+    s.setblocking(False)
+    for ch in keys.encode("latin-1"):
+        s.send(bytes([ch]))
+        time.sleep(0.12 if ch == 13 else 0.03)
+        try:
+            while s.recv(4096):
+                pass
+        except BlockingIOError:
+            pass
+    time.sleep(1.5)
+    s.close()
+
+
+def run_arm64(board, headless, wait, img=None, keys=None):
     img = img or os.path.join(ARM64_DIR, "kernel8.img")
     if not os.path.exists(img):
         raise SystemExit(f"{img} not found; run `python tools/anokos_build.py arm64` first")
     mach, mem = ARM64_MACHINES[board]
     serial_log = os.path.join(ARM64_DIR, f"run_{board}_serial.log")
+    shot = os.path.join(ARM64_DIR, f"run_{board}.png")
+    # The serial port is a socket (type into it: it's the keyboard) that
+    # also logs everything to serial_log.
+    ser_sock = os.path.join(BUILD, f"arm64-{board}-serial.sock")
+    for f in (serial_log, ser_sock):
+        if os.path.exists(f):
+            os.remove(f)
     args = [*mach, "-m", mem, "-kernel", os.path.abspath(img),
-            "-serial", f"file:{serial_log}"]
+            "-chardev", f"socket,id=ser0,path={ser_sock},server=on,wait=off,logfile={serial_log}",
+            "-serial", "chardev:ser0"]
     if board == "virt":
         args += ["-device", "ramfb"]
     sock = os.path.join(BUILD, "qemu-aarch64.sock")
     vm_ = qemu_util.QemuVM(qemu_util.require_qemu("aarch64"), args, sock,
                            log=os.path.join(ARM64_DIR, "run_qemu.log"), display=not headless)
     data = wait_serial(serial_log, "@@ARM64 BOOT OK", wait, vm_.running) or ""
-    if not data and os.path.exists(serial_log):
+    if data and vm_.running():
+        time.sleep(1.5)  # terminal start
+        if keys:
+            send_serial_keys(ser_sock, keys.encode().decode("unicode_escape"))
+        vm_.screenshot_png(shot)
+        print(f"screenshot: {shot}")
+    if os.path.exists(serial_log):
         data = open(serial_log, "rb").read().decode("latin-1")
     print(data.replace("\r", ""))
     if headless:
         vm_.quit()
     else:
-        print(f"QEMU left running; serial output goes to {serial_log}")
+        print(f"QEMU left running; serial console: {ser_sock} (e.g. `nc -U {ser_sock}`), "
+              f"log {serial_log}")
     if "@@ARM64 BOOT OK" not in data:
         raise SystemExit("ARM64 kernel did not report a successful boot")
 
@@ -407,6 +440,8 @@ def main():
     ap.add_argument("--vm-backend", choices=["auto", "qemu", "vbox"], default="auto")
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--board", choices=sorted(ARM64_MACHINES), default="virt")
+    ap.add_argument("--keys", help="run-arm64: type this on the serial console after boot "
+                    "(Python escapes, e.g. 'Mem;\\r'), then screenshot")
     a = ap.parse_args()
     os.makedirs(BUILD, exist_ok=True)
     backend = pick_backend(a.vm_backend)
@@ -419,7 +454,7 @@ def main():
     if a.cmd == "arm64":
         arm64(a.timeout)
     if a.cmd == "run-arm64":
-        run_arm64(a.board, a.headless, a.wait)
+        run_arm64(a.board, a.headless, a.wait, keys=a.keys)
 
 
 if __name__ == "__main__":

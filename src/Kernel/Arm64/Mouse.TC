@@ -1,0 +1,38 @@
+//ARM64 version of $LK,"MsHardDrvrInstall",A="MN:MsHardDrvrInstall"$ and $LK,"KbdMsHndlr",A="MN:KbdMsHndlr"$ in $LK,"Mouse",A="FI:::/Kernel/SerialDev/Mouse.TC"$.
+
+Bool MsHardDrvrInstall(I64 dummy=0) //can be spawned
+{
+  no_warn dummy;
+  I64 i;
+  ms_hard.install_in_progress=TRUE;
+  ms_hard.installed=ms_hard.irqs_working=FALSE;
+  for(i=0;i<5;i++)
+    ms_hard.bttns[i]=0;
+  i=MsHardRst;
+  KbdMsRst;
+  ms_hard.install_attempts++;
+  ms_hard.installed=ms_hard.evt=i;
+  ms_hard.install_in_progress=FALSE;
+  return ms_hard.installed;
+}
+
+U0 KbdMsHndlr(Bool poll_kbd,Bool poll_ms)
+{//The serial console keyboard has no IRQ yet, so it's always polled.
+  no_warn poll_kbd,poll_ms;
+  if (ms_hard.install_in_progress) {
+    Yield;
+    return;
+  }
+  if (kbd.rst)
+    KbdMsRst;
+  else {
+    KbdPktRead;
+    while (FifoU8Cnt(kbd.fifo2))
+      KbdHndlr;
+    while (FifoU8Cnt(ms_hard.fifo2))
+      if (ms_hard.installed)
+	MsHardHndlr;
+      else
+	KbdMsRst;
+  }
+}

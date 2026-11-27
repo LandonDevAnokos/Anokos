@@ -21,6 +21,9 @@ CTRL_KEY_SCAN_DECODE_TABLE::
 	DU8	0,0,0,0,0,0,0,0,0,0,'-',0,0,0,'+',0;
 }
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/KbdCtrl"
+#else
 U0 KbdCmdSend(I64 port, U8 val)
 {
   F64 timeout=tS+0.125;
@@ -96,6 +99,7 @@ U0 KbdTypeMatic(U8 delay)
     Fs->catch_except=TRUE;
   }
 }
+#endif
 
 I64 Char2ScanCode(I64 ch,I64 sc_flags=0)
 {//ASCII val to scan code (Slow).
@@ -385,6 +389,9 @@ U0 KbdBuildSC(U8 raw_byte,Bool in_irq,U8 *_last_raw_byte,I64 *_last_sc)
   *_last_sc=sc;
 }
 
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/Keyboard"
+#else
 U0 KbdPktRead()
 {
   static U8 last_raw_byte=0;
@@ -437,6 +444,7 @@ U0 KbdInit()
   IntEntrySet(0x21,&IRQKbd);
   OutU8(0x21,InU8(0x21)&~2);
 }
+#endif
 
 U0 KbdHndlr()
 {

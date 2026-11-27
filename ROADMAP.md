@@ -151,13 +151,16 @@ are in [ARM64.md](ARM64.md).
 **Scope**
 
 - [ ] Split architecture-specific code (boot, interrupts, memory management, context switching)
-      from portable kernel code (ARM64: boot, memory, tasks and the asm routines done)
+      from portable kernel code (ARM64: boot, memory, tasks, interrupts and the asm routines done)
 - [ ] TerryC compiler back ends that generate ARM64 and ppc64 machine code (ARM64 code
       generator and assembler working; ppc64 not started)
 - [ ] Boot paths for each platform: Raspberry Pi firmware and device tree, and Open Firmware on
       Power Macs (ARM64 boot image runs on QEMU virt and the emulated Pi 3 and 4)
 - [ ] Drivers for each platform's essentials: display, keyboard, timer, interrupt controller and
       storage
+      (ARM64: framebuffer on QEMU virt and the Pi mailbox, serial console keyboard, generic timer,
+      GICv2 and the BCM2836 local interrupt controller; the Anokos terminal runs on the emulated
+      Pi 3 and 4)
 - [x] Cross-build support in the host tools, so all architectures can be built from one machine
       (`anokos_build.py arm64`)
 

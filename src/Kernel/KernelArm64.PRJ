@@ -68,8 +68,7 @@
 #include "KDbg"
 #include "KeyDev"
 #include "KExcept"
-#include "Arm64/Input"		//x86: SerialDev/Keyboard, SerialDev/Mouse (PS/2)
-#include "SerialDev/Message"
+#include "SerialDev/MakeSerialDev" //Keyboard: the serial console, see Arm64/Keyboard
 #include "QSort"
 #include "KTask"
 #include "Job"
@@ -78,6 +77,8 @@
 #include "EdLite"
 #include "BlkDev/MakeBlkDev"
 #include "FunSeg"
+#include "Arm64/Video"		//x86: VBE in KStart16, SysGrInit
+#include "/Anokos/Term"		//x86: loaded by StartOS
 #include "Arm64/KMain"		//x86: KMain
 
 #exe {KCfgDel(kernel_cfg);};

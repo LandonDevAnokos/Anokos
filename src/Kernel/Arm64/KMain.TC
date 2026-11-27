@@ -2,8 +2,8 @@
 //
 //KMainArm64 does what x86's KStart64 does (boot CPU, Adam's heap and
 //task) and KMainArm64B what $LK,"KMain",A="MN:KMain"$ does, for the parts converted so
-//far. Then it tests memory and tasks and runs a small serial monitor
-//until the command line runs on ARM64.
+//far. Then it tests memory and tasks and starts the Anokos terminal (or,
+//with no framebuffer, a shell on the serial console).
 
 U0 ArmBanner()
 {
@@ -230,58 +230,130 @@ U0 ArmTaskRep()
   } while (task!=Fs);
 }
 
-U0 ArmMonitor()
-{//Tiny serial monitor until the command line runs on ARM64.
-  I64 ch;
-  "\nSerial monitor: h help, r reboot, o power off, t self test, "
-	"m memory, k tasks\n> ";
+//************************************
+//The command line, until the compiler runs on ARM64. On x86 every line
+//is TerryC, compiled and run by $LK,"UserTaskCont",A="MN:UserTaskCont"$(). Here the line is
+//matched against built-in commands, typed the same way: "Mem;", "Mem();"
+//or "Mem". It reads lines with $LK,"GetStr",A="MN:GetStr"$(), so it works in the Anokos
+//terminal ($LK,"AnoGetStr2",A="MN:AnoGetStr2"$) and on a bare serial console ($LK,"SysGetStr2",A="MN:SysGetStr2"$).
+
+U0 ArmVerRep()
+{
+  "Anokos ARM64 (TempleOS V%5.3f base) %D %T\n",
+	sys_os_version,sys_compile_time,sys_compile_time;
+  "Board:   %s\n",arm_board.name;
+  "CPU:     MIDR 0x%08X, EL%d, timer %d Hz\n",ArmMidr,ArmCurEl,ArmCntFrq;
+  if (Bt(&sys_run_level,RLf_VBE))
+    "Display: %dx%d, %d bpp, framebuffer 0x%X\n",
+	  vbe.width,vbe.height,vbe.bpp,vbe.fb;
+  else
+    "Display: none (serial console)\n";
+}
+
+U0 ArmShellHelp()
+{
+  "Built-in commands:\n";
+  "  Help      this list\n";
+  "  Cls       clear the screen\n";
+  "  Ver       board, CPU and display\n";
+  "  Mem       memory and heaps\n";
+  "  Tasks     tasks on this CPU\n";
+  "  Date      date and time\n";
+  "  SelfTest  code generator self test\n";
+  "  Reboot    restart\n";
+  "  PowerOff  power off\n";
+  "TerryC code can't run here yet: the compiler isn't converted to ARM64.\n";
+}
+
+U0 ArmShellCls()
+{
+  if (term.active)
+    Cls;
+  else {//VT100 clear screen
+    ArmSerPutChar(CH_ESC);
+    ArmSerPutS("[2J");
+    ArmSerPutChar(CH_ESC);
+    ArmSerPutS("[H");
+  }
+}
+
+Bool ArmShellCmd(U8 *line)
+{//Run one command line. FALSE if it isn't a built-in.
+  U8 buf[STR_LEN];
+  I64 n;
+  while (*line==CH_SPACE || *line=='\t')
+    line++;
+  n=MinI64(StrLen(line),STR_LEN-1);
+  MemCpy(buf,line,n);
+  while (n && (buf[n-1]==';' || buf[n-1]==CH_SPACE || buf[n-1]=='\t'))
+    n--;
+  if (n>=2 && buf[n-2]=='(' && buf[n-1]==')')
+    n-=2;
+  buf[n]=0;
+  if (!*buf)
+    return TRUE;
+  if (!StrICmp(buf,"Help"))
+    ArmShellHelp;
+  else if (!StrICmp(buf,"Cls"))
+    ArmShellCls;
+  else if (!StrICmp(buf,"Ver"))
+    ArmVerRep;
+  else if (!StrICmp(buf,"Mem")) {
+    ArmMemRep;
+    "Code heap %d KiB used",sys_code_bp->used_u8s>>10;
+    if (sys_data_bp)
+      ", data heap %d KiB used",sys_data_bp->used_u8s>>10;
+    "\n";
+  } else if (!StrICmp(buf,"Tasks")) {
+    "Tasks on CPU%d:\n",Gs->num;
+    ArmTaskRep;
+    "Jiffies:%d IRQs:%d spurious:%d idle hits:%d\n",cnts.jiffies,
+	  arm_irq_cnt,arm_irq_spurious,Gs->idle_pt_hits;
+  } else if (!StrICmp(buf,"Date"))
+    "%D %T\n",Now,Now;
+  else if (!StrICmp(buf,"SelfTest"))
+    "Self test: %d failures\n",ArmSelfTest;
+  else if (!StrICmp(buf,"Reboot")) {
+    "Rebooting\n";
+    ArmReboot;
+  } else if (!StrICmp(buf,"PowerOff")) {
+    "Power off\n";
+    ArmPowerOff;
+  } else {
+    "%s: not a built-in command (Help; lists them).\n",buf;
+    return FALSE;
+  }
+  return TRUE;
+}
+
+U0 ArmShell()
+{//Never returns.
+  U8 *st;
   while (TRUE) {
-    if ((ch=ArmSerGetChar)<0) {
-      Sleep(10); //Lets the idle task sleep with WFI
-      goto mon_next;
-    }
-    '' ch;
-    switch (ch) {
-      case 'h':
-	"\nh help  r reboot  o power off  t self test  m memory  "
-	      "k tasks  i info\n";
-	break;
-      case 'r':
-	"\nRebooting\n";
-	ArmReboot;
-	break;
-      case 'o':
-	"\nPower off\n";
-	ArmPowerOff;
-	break;
-      case 't':
-	"\nSelf test: %d failures\n",ArmSelfTest;
-	break;
-      case 'm':
-	"\n";
-	ArmMemRep;
-	"Code heap %d KiB used",sys_code_bp->used_u8s>>10;
-	if (sys_data_bp)
-	  ", data heap %d KiB used",sys_data_bp->used_u8s>>10;
-	"\n";
-	break;
-      case 'k':
-	"\nTasks on CPU%d:\n",Gs->num;
-	ArmTaskRep;
-	"Jiffies:%d IRQs:%d spurious:%d idle hits:%d\n",cnts.jiffies,
-	      arm_irq_cnt,arm_irq_spurious,Gs->idle_pt_hits;
-	break;
-      case 'i':
-	ArmBanner;
-	break;
-      case '\r':
-	"\n";
-	break;
-      default:
-	goto mon_next;
-    }
-    "> ";
-mon_next:
+    st=GetStr("ARM64> ");
+    ArmShellCmd(st);
+    Free(st);
+  }
+}
+
+U0 ArmSerialShellTask(I64)
+{//No framebuffer: the shell on the serial console.
+  sys_focus_task=Fs;
+  "\nAnokos ARM64 serial console. Help; lists the commands.\n";
+  ArmShell;
+}
+
+U0 ArmSerialConsole()
+{//Adam feeds the serial keyboard to the shell, like the terminal's
+//pump task ($LK,"AnoTermPumpTask",A="MN:AnoTermPumpTask"$) does when there's a screen.
+  CTask *task=Spawn(&ArmSerialShellTask,NULL,"Terminal");
+  sys_focus_task=task;
+  while (TRUE) {
+    KbdMsHndlr(FALSE,FALSE);
+    if (!TaskValidate(sys_focus_task) && TaskValidate(task))
+      sys_focus_task=task;
+    KbdMsgsQue;
+    Sleep(15);
   }
 }
 
@@ -359,6 +431,7 @@ U0 KMainArm64B()
   ArmDtbSave;
   BlkPoolsInit;
   ArmTextInit;
+  ArmVideoInit; //x86 SysGrInit
   ArmSysGlblsInit;
   Mem32DevInit;
   UncachedAliasAlloc;
@@ -379,9 +452,17 @@ U0 KMainArm64B()
   LBts(&sys_run_level,RLf_INTERRUPTS);
   TimeCal;
   BlkDevsInitAll; //No drives yet: there are no ARM64 storage drivers
+  KbdMsInit;
+  MsInit;
+  KbdInit; //Keyboard: the serial console
+  Spawn(&MsHardDrvrInstall);
 
   "\nAnokos ARM64 (TempleOS V%5.3f base)\t%D %T\n",
 	sys_os_version,sys_compile_time,sys_compile_time;
+  if (Bt(&sys_run_level,RLf_VBE))
+    "Display: %dx%d\n",vbe.width,vbe.height;
+  else
+    "Display: none (no ramfb or mailbox framebuffer), serial console\n";
   "Now: %D %T\n",Now,Now;
   ArmMemRep;
   "Heaps: code %d MiB",sys_code_bp->alloced_u8s>>20;
@@ -441,7 +522,13 @@ U0 KMainArm64B()
     "@@ARM64 BOOT FAILED %d\n",fails;
   else
     "@@ARM64 BOOT OK\n";
-  ArmMonitor;
+  DbgMode(OFF); //x86 does this after loading the compiler
+  AnoTermStart; //Needs the framebuffer
+  if (!term.active)
+    ArmSerialConsole;
+  LBts(&sys_run_level,RLf_ADAM_SERVER);
+  while (TRUE) //x86 Adam runs SrvTaskCont, which needs the compiler.
+    Sleep(1000);
 }
 
 U0 KMainArm64(U8 *dtb)

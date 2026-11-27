@@ -1,0 +1,8 @@
+//ARM64 version of the PS/2 mouse port code in $LK,"Mouse",A="FI:::/Kernel/SerialDev/Mouse.TC"$.
+//No ARM64 board has a PS/2 mouse. A virtio-input (QEMU) or USB (Raspberry
+//Pi) mouse driver will feed $LK,"MsHardHndlr",A="MN:MsHardHndlr"$ through ms_hard.fifo2 instead.
+
+Bool MsHardRst()
+{//No mouse found.
+  return FALSE;
+}

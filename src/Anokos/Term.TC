@@ -173,6 +173,9 @@ U0 TermRawChar(U8 ch)
   *TermCell(term.cx,term.cy)=ch;
   TermDirty(term.cy);
   term.cx++;
+#ifdef ARCH_ARM64
+  ArmSerPutChar(ch); //The serial console shows the terminal's output too.
+#endif
 }
 
 U0 TermDollarCmd(U8 *cmd)
@@ -225,9 +228,15 @@ U0 TermPutChar(I64 ch)
       break;
     case '\n':
       TermNewLine;
+#ifdef ARCH_ARM64
+      ArmSerPutChar(ch);
+#endif
       break;
     case '\r':
       term.cx=0;
+#ifdef ARCH_ARM64
+      ArmSerPutChar(ch);
+#endif
       break;
     case '\t':
       do TermRawChar(CH_SPACE);
@@ -325,10 +334,34 @@ U0 TermHistAdd(U8 *st)
   term.hist[term.hist_cnt++]=StrNew(st,adam_task);
 }
 
+#ifdef ARCH_ARM64
+U0 TermSerEdit(U8 *buf,I64 len,I64 pos,Bool start=FALSE)
+{//Show the line being edited on the serial console too (VT100: save
+//the cursor at the start, then redraw from there).
+  I64 i;
+  ArmSerPutChar(CH_ESC);
+  if (start) {
+    ArmSerPutChar('7');
+    return;
+  }
+  ArmSerPutChar('8');
+  for (i=0;i<len;i++)
+    ArmSerPutChar(buf[i]);
+  ArmSerPutChar(CH_ESC);
+  ArmSerPutS("[K");
+  if (pos<len) {
+    ArmSerPutChar(CH_ESC);
+    ArmSerPutChar('[');
+    ArmSerPutDec(len-pos);
+    ArmSerPutChar('D');
+  }
+}
+#endif
+
 U8 *AnoGetStr2(I64 flags=0)
 {//Replaces the DolDoc line editor. Returns a MAlloc()ed string.
   U8 buf[TERM_LINE_MAX];
-  I64 ch,sc,len=0,pos=0,old_len,hist_i=term.hist_cnt;
+  I64 i,ch,sc,len=0,pos=0,old_len,hist_i=term.hist_cnt;
   no_warn flags;
   buf[0]=0;
   TermLock;
@@ -338,6 +371,9 @@ U8 *AnoGetStr2(I64 flags=0)
   term.anchor_y=term.cy;
   TermEditDraw(buf,0,0,0);
   TermUnlock;
+#ifdef ARCH_ARM64
+  TermSerEdit(buf,0,0,TRUE);
+#endif
   while (TRUE) {
     ch=GetKey(&sc);
     old_len=len;
@@ -386,6 +422,10 @@ U8 *AnoGetStr2(I64 flags=0)
 	TermRender;
 	TermUnlock;
 	TermHistAdd(buf);
+#ifdef ARCH_ARM64
+	TermSerEdit(buf,len,len);
+	ArmSerPutChar('\n');
+#endif
 	return StrNew(buf);
       case CH_BACKSPACE:
 	if (pos>0) {
@@ -409,7 +449,8 @@ U8 *AnoGetStr2(I64 flags=0)
 	ch=CH_SPACE;
       default:
 	if (CH_SPACE<=ch<=0x7E && len<TERM_LINE_MAX-1) {
-	  MemCpy(buf+pos+1,buf+pos,len-pos+1);
+	  for (i=len;i>=pos;i--) //Not MemCpy(): it copies forward
+	    buf[i+1]=buf[i];
 	  buf[pos++]=ch;
 	  len++;
 	}
@@ -418,6 +459,9 @@ ge_draw:
     TermLock;
     TermEditDraw(buf,len,pos,MaxI64(0,old_len-len));
     TermUnlock;
+#ifdef ARCH_ARM64
+    TermSerEdit(buf,len,pos);
+#endif
   }
 }
 
@@ -454,6 +498,13 @@ U0 AnoTermTask(I64)
   Fs->win_inhibit=WIG_USER_TASK_DFT; //Clears WIf_SELF_FOCUS so Ctrl+Alt+C works
   LBts(&Fs->display_flags,DISPLAYf_NOT_RAW);
   sys_focus_task=Fs;
+#ifdef ARCH_ARM64
+//No compiler on ARM64 yet, so no TerryC command line: built-in commands.
+  "Anokos ARM64 (based on TempleOS V%5.3f)\n",sys_os_version;
+  "Display %dx%d, %dx%d text. Help; lists the commands.\n\n",
+	vbe.width,vbe.height,term.cols,term.rows;
+  ArmShell;
+#else
   Cd("~");
   "Anokos (based on TempleOS V%5.3f)\n",sys_os_version;
   "Display %dx%d, %dx%d text. Commands are TerryC, e.g. Dir;\n",
@@ -461,6 +512,7 @@ U0 AnoTermTask(I64)
   "Ctrl+Alt+C stops a running command. Cls; clears the screen.\n\n";
   while (TRUE)
     UserTaskCont;
+#endif
 }
 
 U0 AnoNop(I64)

@@ -16,8 +16,11 @@ and only the x86-specific parts get ARM64 versions.
 | Memory: block pools, heaps, MAlloc/Free, RAM from the device tree or Pi mailbox | Working |
 | Tasks: Adam task, Spawn, Yield/Sleep, task exit, try/catch/throw | Working (one core) |
 | Interrupts: IRQ entry, GICv2 (virt, Pi 4/5), BCM2836 local intc (Pi 3), timer IRQ at 1000 Hz, idle WFI | Working |
-| Kernel files in the ARM64 build | All of `Kernel.PRJ` except PCIBIOS and the PS/2 and IDE drivers (see the checklist) |
-| Framebuffer, storage, input, more cores, faults into the debugger | Not started |
+| Framebuffer: ramfb (virt), VideoCore mailbox (Pi), kernel `vbe` console | Working |
+| Anokos terminal (`src/Anokos/Term.TC`) in the kernel, with built-in commands | Working |
+| Keyboard: the serial console, through the x86 PS/2 scan code path | Working |
+| Kernel files in the ARM64 build | All of `Kernel.PRJ` except PCIBIOS and the IDE driver (see the checklist), plus `Anokos/Term` |
+| Storage, virtio/USB input, more cores, faults into the debugger | Not started |
 | Compiler running *on* ARM64 (JIT) | Not started |
 
 The ARM64 kernel boots on QEMU's `virt` machine and on the emulated Raspberry Pi 3 and 4. It finds
@@ -31,9 +34,16 @@ RAM, sets up the heaps and the Adam task, and runs its tests:
 While nothing is ready to run, the idle task sleeps in `WFI` until the next interrupt, as x86 does
 with `HLT`.
 
-Then it starts a small serial monitor (`h` help, `k` tasks, `m` memory, `t` self test, `r` reboot,
-`o` power off). Kernel `Print` output (and anything else through `RawPutChar`) goes to the serial
-console.
+Then it starts the Anokos terminal on the framebuffer, as x86 Anokos does: 1920x1080 on QEMU
+`virt` (`-device ramfb`), the firmware's size on a Pi (640x480 in QEMU, the monitor's native size on
+hardware). Without a framebuffer the same shell runs on the serial console.
+
+The compiler doesn't run on ARM64 yet, so the command line can't run TerryC. It has built-in
+commands instead, typed the same way (`Mem;`, `Mem();` or `Mem`): `Help`, `Cls`, `Ver`, `Mem`,
+`Tasks`, `Date`, `SelfTest`, `Reboot`, `PowerOff`.
+
+The serial console is the keyboard (see "Input" below), and everything the terminal shows is also
+written to it. So you can use the ARM64 kernel from a terminal on the host.
 
 ## Building and running
 
@@ -54,9 +64,16 @@ Cmp("::/Kernel/KernelArm64","B:/KernelArm64","B:/Kernel8");
 ```
 
 and sends `Kernel8.IMG` back over the serial port as `build/arm64/kernel8.img`. Stage 3 takes
-about 6 seconds. `run-arm64` uses `qemu-system-aarch64 -kernel build/arm64/kernel8.img` and
-writes the serial output to `build/arm64/run_<board>_serial.log`. Without `--headless`, QEMU
-stays open with its serial console in the log file.
+about 6 seconds. `run-arm64` uses `qemu-system-aarch64 -kernel build/arm64/kernel8.img`. It
+waits for `@@ARM64 BOOT OK`, saves a screenshot as `build/arm64/run_<board>.png` and logs the serial
+output to `build/arm64/run_<board>_serial.log`. The serial port is the socket
+`build/arm64-<board>-serial.sock`:
+
+```sh
+python tools/anokos_build.py run-arm64 --headless --keys 'Ver\rTasks\r'   # type, then screenshot
+python tools/anokos_build.py run-arm64      # QEMU stays open; then type with:
+nc -U build/arm64-virt-serial.sock
+```
 
 You can also run the compile yourself in the Anokos terminal:
 `Cmp("/Kernel/KernelArm64","B:/KernelArm64","B:/Kernel8");`.
@@ -139,18 +156,50 @@ It also defines the kernel's boot data labels (`SYS_RUN_LEVEL`, `MEM_HEAP_BASE`,
 bars, `SYS_SEMAS` and so on) with the same names and sizes as on x86, so `KernelB.TH` binds to
 them unchanged.
 
+### Framebuffer and terminal
+
+`src/Kernel/Arm64/Video.TC` does what VBE in `KStart16` and `SysGrInit` do on x86. It sets up a
+32-bit framebuffer and fills in the same `vbe` globals, so the kernel's raw console
+(`VbeRawPutChar`) and the Anokos terminal work unchanged.
+
+- QEMU `virt`: ramfb. The framebuffer is allocated from the heap. Its address and size go to QEMU
+  through the fw_cfg file `etc/ramfb` (a big-endian DMA write). `fb=WIDTHxHEIGHT` in the kernel
+  command line (`-append`) changes the default 1920x1080.
+- Raspberry Pi: VideoCore mailbox property calls (get the native size, set size, depth 32,
+  RGB order, allocate, get pitch). The firmware puts the framebuffer in GPU memory in the first GiB.
+  `ArmFbUncache` maps its 2 MiB blocks Normal non-cacheable (MAIR index 2), so the display sees
+  every write on real hardware. QEMU doesn't model caches, so it can't test that part.
+
+`KernelArm64.PRJ` includes `/Anokos/Term`. On x86 `StartOS` loads it with the compiler. The ARM64
+part of `AnoTermTask` runs `ArmShell` (in `Arm64/KMain`) instead of `UserTaskCont`. The terminal
+also writes its output and its line editor to the serial console (VT100 save/restore cursor).
+
+### Input
+
+`SerialDev/Keyboard.TC` and `Mouse.TC` are shared. Only the 8042 and PS/2 port parts have ARM64
+versions:
+- `Arm64/KbdCtrl`: no 8042;
+- `Arm64/Keyboard`: the serial console;
+- `Arm64/MsHard` and `Arm64/Mouse`: no PS/2 mouse, and `KbdMsHndlr` polls the UART.
+
+Bytes from the serial terminal become the PS/2 set 1 scan codes a keyboard would send, with Shift,
+Ctrl and Alt presses around them. They go into `kbd.fifo2`, the same place as x86 `IRQKbd`. From
+there the x86 code takes over: `KbdHndlr` builds the scan codes and `KbdMsgsQue` sends key messages
+to the focus task. Cursor keys, Home/End, Ins/Del, PgUp/PgDn (VT100/xterm sequences), Ctrl+letter
+and Meta (Esc then a key = Alt) work.
+
 ## Boards and the Raspberry Pi
 
 One image runs on every board. `KStart` picks a memory layout from where it was loaded and the
 CPU part number. `src/Kernel/Arm64/Board.TC` then fills in a `CArmBoard` with the UART, the
 peripheral window, the mailbox base and the reset/power-off method.
 
-| Board | Layout | UART | Tested |
-| --- | --- | --- | --- |
-| QEMU `virt` | RAM from 1 GiB | PL011 at 0x09000000 | QEMU |
-| Raspberry Pi 3 (BCM2837) | RAM below 0x3F000000 | PL011 at 0x3F201000 | QEMU `raspi3b` |
-| Raspberry Pi 4 (BCM2711) | peripherals at 0xFC000000 | PL011 at 0xFE201000 | QEMU `raspi4b` |
-| Raspberry Pi 5 (BCM2712) | peripherals from 64 GiB | PL011 at 0x107D001000 | not yet |
+| Board | Layout | UART | Display | Tested |
+| --- | --- | --- | --- | --- |
+| QEMU `virt` | RAM from 1 GiB | PL011 at 0x09000000 | ramfb | QEMU |
+| Raspberry Pi 3 (BCM2837) | RAM below 0x3F000000 | PL011 at 0x3F201000 | mailbox | QEMU `raspi3b` |
+| Raspberry Pi 4 (BCM2711) | peripherals at 0xFC000000 | PL011 at 0xFE201000 | mailbox | QEMU `raspi4b` |
+| Raspberry Pi 5 (BCM2712) | peripherals from 64 GiB | PL011 at 0x107D001000 | mailbox | not yet |
 
 To try it on real Raspberry Pi hardware (untested so far), copy the firmware (`bootcode.bin` on
 the Pi 3, plus `start*.elf` and `fixup*.dat`) and `build/arm64/kernel8.img` to a FAT SD card, and
@@ -202,11 +251,12 @@ ARM64 asm replacements keep the x86 labels, so the `_extern` declarations stay a
 | KTask | CallStkGrow asm, Spawn's start frame | **Done:** `CallStkGrow` doesn't grow the stack yet; tasks start via `ARM64_TASK_START` |
 | MultiProc | APIC, TSS, AP start-up | **Partly done:** single core; CPU structs, jobs and SpawnQue are shared |
 | KMisc, KDate, Display, KDbg | PIT, HPET, CMOS, VGA ports, CR2, `INT` | **Done:** generic timer for HPET, PL031 RTC (virt), serial `RawPutChar`, FAR_EL1, `ArmPanic` |
-| SerialDev/Keyboard, Mouse | PS/2 | to do: `Arm64/Input` has stand-ins; serial, virtio-input, USB |
+| SerialDev/Keyboard, Mouse | 8042, PS/2 IRQs | **Done:** `Arm64/KbdCtrl`, `Arm64/Keyboard` (serial console as keyboard), `Arm64/MsHard`, `Arm64/Mouse`. Still to do: virtio-input, USB; Ctrl+Alt hot keys that need IRQ context |
 | BlkDev/DskATA, DskATAId | IDE | to do: `Arm64/Ata` has stand-ins; virtio-blk (virt), SD card (Pi) |
 | KInts | IDT, PIC, IRQ_TIMER | **Done:** `Arm64/KInts` and the IRQ path in `Arm64/KStart`. GICv2 or BCM2836 local intc; generic timer IRQ; `IntEntrySet` installs TerryC handlers. CPU faults still go to a crash report, not the debugger |
 | PCIBIOS | BIOS32 | to do: PCIe ECAM from the device tree (milestone 2) |
-| KMain | VBE, PIT, devices | **Partly done:** `Arm64/KMain`; framebuffer, interrupts and drives to do |
+| KMain | VBE, PIT, devices | **Partly done:** `Arm64/KMain`, `Arm64/Video` (framebuffer); drives to do |
+| Anokos/Term (not kernel on x86) | `UserTaskCont` needs the compiler | **Done:** in the ARM64 kernel; built-in commands (`ArmShell`); output also on serial |
 | All other files | none | shared, in the ARM64 build |
 
 Compiler features still missing on ARM64:
@@ -218,12 +268,11 @@ Compiler features still missing on ARM64:
 
 The suggested order:
 
-1. The framebuffer and the Anokos terminal.
-2. Faults into the debugger (`Fault2`).
-3. Serial/virtio input.
-4. Block devices and RedSea.
-5. More cores.
-6. The compiler on ARM64.
+1. Faults into the debugger (`Fault2`).
+2. Block devices and RedSea (virtio-blk, SD card).
+3. virtio-input and USB keyboards; a UART receive IRQ.
+4. More cores.
+5. The compiler on ARM64, which turns the shell into the TerryC command line.
 
 ## QEMU on macOS 14
 

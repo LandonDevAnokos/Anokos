@@ -21,6 +21,8 @@ _extern _ARM_WFI	U0 ArmWfi();	//Wait for interrupt
 _extern _ARM_CNTP_CVAL	U0 ArmCntpCval(I64 cval); //Physical timer compare value
 _extern _ARM_CNTP_CTL	U0 ArmCntpCtl(I64 ctl); //Physical timer control
 _extern _ARM_DSB	U0 ArmDsb();	//Data synchronization barrier
+_extern _ARM_TLB_FLUSH U0 ArmTlbFlush(); //After changing page tables
+_extern ARM64_PT_L1	U64 arm64_pt_l1; //Identity map, first of 512 1 GiB entries
 _extern _ARM_HVC	I64 ArmHvc(I64 fn,I64 a1=0,I64 a2=0,I64 a3=0);
 _extern _ARM_SET_FS	U0 ArmSetFs(CTask *task);
 _extern _ARM_SET_GS	U0 ArmSetGs(CCPU *c);
@@ -57,3 +59,4 @@ public class CArmBoard
 };
 
 #help_index ""
+extern U0 ArmShell(); //Arm64/KMain, called by the Anokos terminal

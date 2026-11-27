@@ -1,0 +1,159 @@
+//ARM64 version of the PS/2 port code in $LK,"Keyboard",A="FI:::/Kernel/SerialDev/Keyboard.TC"$: the serial console is
+//the keyboard.
+//
+//Bytes from the UART (a VT100/xterm terminal) are turned into the PS/2
+//set 1 scan codes a real keyboard sends, modifier presses included, and
+//go into kbd.fifo2 the way $LK,"IRQKbd",A="MN:IRQKbd"$ puts them there. From there on it's
+//the x86 code: $LK,"KbdHndlr",A="MN:KbdHndlr"$() builds scan codes and $LK,"KbdMsgsQue",A="MN:KbdMsgsQue"$() sends
+//MSG_KEY_DOWN/MSG_KEY_UP to the focus task.
+//
+//  Printable chars, Tab, Enter (CR), Backspace (DEL or BS), Esc
+//  Ctrl+letter				Ctrl+letter
+//  Esc then a char (xterm Meta)		Alt+char
+//  ESC[A ESC[B ESC[C ESC[D, ESCOA...	Cursor keys
+//  ESC[H ESC[F ESC[1~ ESC[4~		Home, End
+//  ESC[2~ ESC[3~ ESC[5~ ESC[6~		Ins, Del, PgUp, PgDn
+//  ESC[1;mX (m: 2 Shift, 3 Alt, 5 Ctrl)	Shifted cursor keys
+//A lone Esc is a key once nothing follows it for ARM_KBD_ESC_MS.
+
+#define ARM_KBD_ESC_MS		30
+#define AKS_NORMAL	0
+#define AKS_ESC		1
+#define AKS_CSI		2
+#define AKS_SS3		3
+
+I64 arm_kbd_state,arm_kbd_esc_t,arm_kbd_pn,arm_kbd_p[2];
+
+U0 ArmKbdRaw(U8 b)
+{
+  FifoU8Ins(kbd.fifo2,b);
+}
+
+U0 ArmKbdKey(I64 code,I64 flags=0)
+{//Press and release a set 1 key, holding the modifiers in flags.
+  if (flags&SCF_CTRL)  ArmKbdRaw(SC_CTRL);
+  if (flags&SCF_ALT)   ArmKbdRaw(SC_ALT);
+  if (flags&SCF_SHIFT) ArmKbdRaw(SC_SHIFT);
+  if (flags&SCF_E0_PREFIX) ArmKbdRaw(0xE0);
+  ArmKbdRaw(code);
+  if (flags&SCF_E0_PREFIX) ArmKbdRaw(0xE0);
+  ArmKbdRaw(code|0x80);
+  if (flags&SCF_SHIFT) ArmKbdRaw(SC_SHIFT|0x80);
+  if (flags&SCF_ALT)   ArmKbdRaw(SC_ALT|0x80);
+  if (flags&SCF_CTRL)  ArmKbdRaw(SC_CTRL|0x80);
+}
+
+U0 ArmKbdChar(I64 ch,I64 flags=0)
+{//An ASCII char from the terminal.
+  I64 sc;
+  if (ch=='\r')
+    ch='\n';
+  else if (ch==0x7F)
+    ch=CH_BACKSPACE;
+  else if (ch=='\n')
+    return; //CR LF: the CR was Enter
+  if (sc=Char2ScanCode(ch))
+    ArmKbdKey(sc&0x7F,sc&(SCF_SHIFT|SCF_CTRL)|flags);
+}
+
+I64 ArmKbdMods(I64 m)
+{//xterm modifier parameter to scan code flags.
+  I64 res=0;
+  if (m>1) {
+    m--;
+    if (m&1) res|=SCF_SHIFT;
+    if (m&2) res|=SCF_ALT;
+    if (m&4) res|=SCF_CTRL;
+  }
+  return res;
+}
+
+U0 ArmKbdCsi(U8 final,I64 p0,I64 p1)
+{//End of an escape sequence: a cursor or editing key.
+  I64 code=0,flags=SCF_E0_PREFIX;
+  switch (final) {
+    case 'A': code=0x48; break; //Up
+    case 'B': code=0x50; break; //Down
+    case 'C': code=0x4D; break; //Right
+    case 'D': code=0x4B; break; //Left
+    case 'H': code=0x47; break; //Home
+    case 'F': code=0x4F; break; //End
+    case 'Z': //Shift+Tab
+      ArmKbdKey(0x0F,SCF_SHIFT);
+      return;
+    case '~':
+      switch (p0) {
+	case 1: case 7: code=0x47; break;
+	case 2: code=0x52; break;
+	case 3: code=0x53; break;
+	case 4: case 8: code=0x4F; break;
+	case 5: code=0x49; break;
+	case 6: code=0x51; break;
+      }
+      break;
+  }
+  if (code)
+    ArmKbdKey(code,flags|ArmKbdMods(p1));
+}
+
+U0 ArmKbdByte(U8 b)
+{
+  switch (arm_kbd_state) {
+    case AKS_ESC:
+      arm_kbd_state=AKS_NORMAL;
+      if (b=='[') {
+	arm_kbd_state=AKS_CSI;
+	arm_kbd_pn=0;
+	arm_kbd_p[0]=arm_kbd_p[1]=0;
+      } else if (b=='O')
+	arm_kbd_state=AKS_SS3;
+      else if (b==CH_ESC) {
+	ArmKbdChar(CH_ESC);
+	arm_kbd_state=AKS_ESC;
+	arm_kbd_esc_t=cnts.jiffies;
+      } else
+	ArmKbdChar(b,SCF_ALT);
+      break;
+    case AKS_CSI:
+      if ('0'<=b<='9') {
+	if (arm_kbd_pn<2)
+	  arm_kbd_p[arm_kbd_pn]=arm_kbd_p[arm_kbd_pn]*10+b-'0';
+      } else if (b==';')
+	arm_kbd_pn++;
+      else if (0x40<=b<=0x7E) {
+	arm_kbd_state=AKS_NORMAL;
+	ArmKbdCsi(b,arm_kbd_p[0],arm_kbd_p[1]);
+      } else
+	arm_kbd_state=AKS_NORMAL;
+      break;
+    case AKS_SS3:
+      arm_kbd_state=AKS_NORMAL;
+      ArmKbdCsi(b,0,0);
+      break;
+    default:
+      if (b==CH_ESC) {
+	arm_kbd_state=AKS_ESC;
+	arm_kbd_esc_t=cnts.jiffies;
+      } else
+	ArmKbdChar(b);
+  }
+}
+
+U0 KbdPktRead()
+{//Drain the UART into kbd.fifo2.
+  I64 ch;
+  while ((ch=ArmSerGetChar)>=0) {
+    kbd.timestamp=GetTSC;
+    ArmKbdByte(ch);
+  }
+  if (arm_kbd_state==AKS_ESC && cnts.jiffies-arm_kbd_esc_t>=ARM_KBD_ESC_MS) {
+    arm_kbd_state=AKS_NORMAL;
+    ArmKbdChar(CH_ESC);
+  }
+}
+
+U0 KbdInit()
+{//The UART is set up at boot ($LK,"ArmSerInit",A="MN:ArmSerInit"$). It's polled, see $LK,"KbdMsHndlr",A="MN:KbdMsHndlr"$.
+  arm_kbd_state=AKS_NORMAL;
+  kbd.irqs_working=FALSE;
+}
