@@ -1,0 +1,200 @@
+//ARM64 version of $LK,"KInts",A="FI:::/Kernel/KInts.TC"$: interrupt controllers and the timer IRQ.
+//
+//x86 points IDT entries at interrupt routines. On ARM64 every IRQ comes
+//in through one vector ($LK,"ARM64_IRQ",A="FF:::/Kernel/Arm64/KStart.TC,ARM64_IRQ"$), and $LK,"ArmIrq",A="MN:ArmIrq"$() asks the
+//interrupt controller which one it is and calls the handler set with
+//$LK,"IntEntrySet",A="MN:IntEntrySet"$(). Handlers are ordinary TerryC functions (not interrupt
+//functions); they run with IRQs masked and needn't acknowledge anything.
+//
+//Interrupt controllers:
+//  GICv2		QEMU virt, Raspberry Pi 4 and 5 (GIC-400)
+//  BCM2836 local	Raspberry Pi 3 (per-core timer interrupts)
+//IRQ numbers are GIC numbers: 0-15 SGIs, 16-31 per-core (the generic
+//timer is 30), 32 and up shared device interrupts.
+
+#define ARM_IRQS_NUM		1020
+#define ARM_IRQ_TIMER		30	//Non-secure physical generic timer
+
+#define GICD_CTLR		0x000
+#define GICD_TYPER		0x004
+#define GICD_ISENABLER		0x100
+#define GICD_ICENABLER		0x180
+#define GICD_ICPENDR		0x280
+#define GICD_IPRIORITYR		0x400
+#define GICD_ITARGETSR		0x800
+#define GICC_CTLR		0x000
+#define GICC_PMR		0x004
+#define GICC_BPR		0x008
+#define GICC_IAR		0x00C
+#define GICC_EOIR		0x010
+
+#define LOCAL_TIMER_CTL0	0x40	//BCM2836: core 0 timer IRQ enables
+#define LOCAL_IRQ_SRC0		0x60	//BCM2836: core 0 IRQ source
+
+extern U0 IntCore0TimerHndlr(CTask *);
+
+U8 *arm_irq_hndlrs[ARM_IRQS_NUM]; //Handler addresses, see IntEntrySet
+I64 arm_irq_cnt,arm_irq_spurious,arm_timer_interval,arm_timer_cval;
+
+U32 *ArmGicd(I64 offset)
+{
+  return arm_board.gicd_base+offset;
+}
+
+U32 *ArmGicc(I64 offset)
+{
+  return arm_board.gicc_base+offset;
+}
+
+U0 ArmGicInit()
+{//GICv2: everything off, all to CPU 0, middle priority, then on.
+  I64 i,lines;
+  *ArmGicd(GICD_CTLR)=0;
+  lines=((*ArmGicd(GICD_TYPER)&0x1F)+1)*32;
+  for (i=0;i<lines;i+=32) {
+    *ArmGicd(GICD_ICENABLER+i/8)=0xFFFFFFFF;
+    *ArmGicd(GICD_ICPENDR+i/8)=0xFFFFFFFF;
+  }
+  for (i=0;i<lines;i+=4) {
+    *ArmGicd(GICD_IPRIORITYR+i)=0xA0A0A0A0;
+    if (i>=32)
+      *ArmGicd(GICD_ITARGETSR+i)=0x01010101;
+  }
+  *ArmGicd(GICD_CTLR)=1;
+  *ArmGicc(GICC_PMR)=0xF0;
+  *ArmGicc(GICC_BPR)=0;
+  *ArmGicc(GICC_CTLR)=1;
+}
+
+U0 ArmIrqEnable(I64 irq,Bool val=TRUE)
+{//Unmask or mask an IRQ at the interrupt controller.
+  U32 *reg;
+  if (arm_board.gicd_base) {
+    if (val)
+      reg=ArmGicd(GICD_ISENABLER+(irq>>5)*4);
+    else
+      reg=ArmGicd(GICD_ICENABLER+(irq>>5)*4);
+    *reg=1<<(irq&31);
+  } else if (arm_board.local_intc && irq==ARM_IRQ_TIMER) {
+    reg=arm_board.local_intc+LOCAL_TIMER_CTL0;
+    if (val)
+      *reg=*reg|2;	//nCNTPNSIRQ
+    else
+      *reg=*reg&~2;
+  }
+}
+
+U0 ArmIrqDispatch(I64 irq)
+{
+  arm_irq_cnt++;
+  if (0<=irq<ARM_IRQS_NUM && arm_irq_hndlrs[irq])
+    Call(arm_irq_hndlrs[irq]);
+  else
+    arm_irq_spurious++;
+}
+
+U0 ArmIrq()
+{//Called from $LK,"ARM64_IRQ",A="FF:::/Kernel/Arm64/KStart.TC,ARM64_IRQ"$ with IRQs masked.
+  U32 iar;
+  if (arm_board.gicc_base) {
+    while (TRUE) {
+      iar=*ArmGicc(GICC_IAR);
+      if (iar&0x3FF>=1020)
+	break;
+      ArmIrqDispatch(iar&0x3FF);
+      *ArmGicc(GICC_EOIR)=iar;
+    }
+  } else if (arm_board.local_intc) {
+    if (*(arm_board.local_intc+LOCAL_IRQ_SRC0)(U32 *)&2)
+      ArmIrqDispatch(ARM_IRQ_TIMER);
+    else
+      arm_irq_spurious++;
+  }
+}
+
+U0 ArmTimerIrq()
+{//The generic timer at JIFFY_FREQ: what x86 IRQ_TIMER does.
+  I64 now=ArmCntPct;
+  arm_timer_cval+=arm_timer_interval;
+  if (arm_timer_cval<=now)
+    arm_timer_cval=now+arm_timer_interval;
+  ArmCntpCval(arm_timer_cval);
+  lock Gs->total_jiffies++;
+  if (Bt(&Fs->task_flags,TASKf_IDLE))
+    lock Gs->idle_pt_hits++;
+  if (Gs->profiler_timer_irq)
+    (*Gs->profiler_timer_irq)(Fs);
+  if (!Gs->num)
+    IntCore0TimerHndlr(Fs); //Only core 0 counts jiffies.
+}
+
+U8 *IntEntryGet(I64 irq)
+{//Get interrupt handler.
+  if (0<=irq<ARM_IRQS_NUM)
+    return arm_irq_hndlrs[irq];
+  return NULL;
+}
+
+U8 *IntEntrySet(I64 irq,U0 (*fp_new_hndlr)(),I64 type=IDTET_IRQ,I64 dpl=0)
+{//Set the handler for an IRQ and unmask it. NULL masks it again.
+  U8 *res;
+  no_warn type,dpl;
+  if (!(0<=irq<ARM_IRQS_NUM))
+    return NULL;
+  PUSHFD
+  CLI
+  res=arm_irq_hndlrs[irq];
+  arm_irq_hndlrs[irq]=fp_new_hndlr;
+  ArmIrqEnable(irq,ToBool(fp_new_hndlr));
+  POPFD
+  return res;
+}
+
+U0 IntsInit()
+{//Init the interrupt controller (x86: the 8259).
+  if (arm_board.gicd_base)
+    ArmGicInit;
+}
+
+U0 IntNop()
+{//Default handler.
+}
+
+U0 IntDivZero()
+{//ARM64 divides by zero without a fault (the result is 0), so this
+//only runs if something calls it.
+  throw('DivZero');
+}
+
+U8 *IntFaultHndlrsNew()
+{//x86 fault entry stubs; ARM64 faults all come through the vectors.
+  return NULL;
+}
+
+U0 IntInit1()
+{//x86 loads the IDT here. The ARM64 vectors are installed at boot.
+}
+
+U0 IntInit2()
+{//Core 0: start the timer IRQ.
+  I64 frq=ArmCntFrq,t0;
+  PUSHFD
+  CLI
+  arm_timer_interval=frq/JIFFY_FREQ;
+  arm_timer_cval=ArmCntPct+arm_timer_interval;
+  ArmCntpCval(arm_timer_cval);
+  ArmCntpCtl(1);
+  IntEntrySet(ARM_IRQ_TIMER,&ArmTimerIrq);
+  POPFD
+//Make sure it ticks; if it doesn't, jiffies keep coming from the
+//counter (see $LK,"ArmJiffiesUpdate",A="MN:ArmJiffiesUpdate"$).
+  t0=Gs->total_jiffies;
+  arm_timer_irq_on=TRUE;
+  frq=ArmCntPct+frq/50; //20 mS
+  while (ArmCntPct<frq) {}
+  if (Gs->total_jiffies==t0) {
+    arm_timer_irq_on=FALSE;
+    IntEntrySet(ARM_IRQ_TIMER,NULL);
+    ArmCntpCtl(2);
+  }
+}

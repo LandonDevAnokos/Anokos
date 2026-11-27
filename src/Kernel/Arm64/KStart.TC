@@ -278,8 +278,9 @@ ARM64_PT_L2A::	DU8	4096 DUP(0);
 ARM64_PT_L2B::	DU8	4096 DUP(0);
 
 //************************************
-//Exception vectors (VBAR_EL1). Every entry saves the registers and calls
-//$LK,"ArmExcept",A="MN:ArmExcept"$(kind,regs). Nothing is recoverable yet.
+//Exception vectors (VBAR_EL1). IRQs from the kernel (EL1, SP_EL1) go to
+//ARM64_IRQ; everything else saves the registers and calls
+//$LK,"ArmExcept",A="MN:ArmExcept"$(kind,regs), which reports a crash.
 	ALIGN	2048,0
 ARM64_VECTORS::
 	SUB	SP,SP,272
@@ -310,7 +311,7 @@ ARM64_VECTORS::
 	SUB	SP,SP,272
 	STP	X0,X1,[SP]
 	MOV	X0,5
-	B	ARM64_EXCEPT
+	B	ARM64_IRQ
 	ALIGN	128,0
 	SUB	SP,SP,272
 	STP	X0,X1,[SP]
@@ -411,6 +412,70 @@ ARM64_EXCEPT::
 	ERET
 
 //************************************
+//IRQ: like x86 IRQ_TIMER. The interrupted code's registers stay in a
+//frame on its own stack; its CTask resumes at ARM64_IRQ_RESUME, which
+//restores them. After $LK,"ArmIrq",A="MN:ArmIrq"$ the scheduler runs, starting at the
+//interrupted task (so it normally just continues), or at Seth if the
+//idle task was interrupted.
+ARM64_IRQ::
+	STP	X2,X3,[SP,16]
+	STP	X4,X5,[SP,32]
+	STP	X6,X7,[SP,48]
+	STP	X8,X9,[SP,64]
+	STP	X10,X11,[SP,80]
+	STP	X12,X13,[SP,96]
+	STP	X14,X15,[SP,112]
+	STP	X16,X17,[SP,128]
+	STP	X18,X19,[SP,144]
+	STP	X20,X21,[SP,160]
+	STP	X22,X23,[SP,176]
+	STP	X24,X25,[SP,192]
+	STP	X26,X27,[SP,208]
+	STP	X28,X29,[SP,224]
+	MRS	X1,ELR_EL1
+	STP	X30,X1,[SP,240]
+	MRS	X1,SPSR_EL1
+	STR	X1,[SP,256]
+	BL	ArmIrq
+	MRS	X6,TPIDR_EL1		//No task yet: just return
+	CBZ	X6,ARM64_IRQ_RESUME
+	ADR	X1,ARM64_IRQ_RESUME
+	STR	X1,[X6,CTask.rip]
+	MOV	X1,SP
+	STR	X1,[X6,CTask.rsp]
+	MOV	X1,2			//x86 flags, IF off: masked until ERET
+	STR	X1,[X6,CTask.rflags]
+	MRS	X0,TPIDRRO_EL0
+	LDR	X1,[X0,CCPU.idle_task]
+	CMP	X1,X6
+	BNE	@@05
+	LDR	X6,[X0,CCPU.seth_task]
+@@05:	B	RESTORE_RSI_TASK
+
+ARM64_IRQ_RESUME::	//SP=the frame ARM64_IRQ saved
+	LDP	X30,X1,[SP,240]
+	MSR	ELR_EL1,X1
+	LDR	X1,[SP,256]
+	MSR	SPSR_EL1,X1
+	LDP	X2,X3,[SP,16]
+	LDP	X4,X5,[SP,32]
+	LDP	X6,X7,[SP,48]
+	LDP	X8,X9,[SP,64]
+	LDP	X10,X11,[SP,80]
+	LDP	X12,X13,[SP,96]
+	LDP	X14,X15,[SP,112]
+	LDP	X16,X17,[SP,128]
+	LDP	X18,X19,[SP,144]
+	LDP	X20,X21,[SP,160]
+	LDP	X22,X23,[SP,176]
+	LDP	X24,X25,[SP,192]
+	LDP	X26,X27,[SP,208]
+	LDP	X28,X29,[SP,224]
+	LDP	X0,X1,[SP]
+	ADD	SP,SP,272
+	ERET
+
+//************************************
 //Small helpers TerryC calls ($LK,"KernelA64.TH",A="FI:::/Kernel/Arm64/KernelA64.TH"$).
 //Args are on the stack, the first at [SP] on entry, and like every
 //TerryC function with a fixed arg count the callee pops them.
@@ -435,6 +500,18 @@ _ARM_CNTPCT::	ISB
 		MRS	X0,CNTPCT_EL0
 		RET
 _ARM_WFI::	WFI
+		RET
+_ARM_CNTP_CVAL::			//U0 ArmCntpCval(I64 cval): physical timer compare
+		LDR	X0,[SP]
+		ADD	SP,SP,8
+		MSR	CNTP_CVAL_EL0,X0
+		ISB
+		RET
+_ARM_CNTP_CTL::				//U0 ArmCntpCtl(I64 ctl): 1=on, 2=masked
+		LDR	X0,[SP]
+		ADD	SP,SP,8
+		MSR	CNTP_CTL_EL0,X0
+		ISB
 		RET
 _ARM_DSB::	DSB	SY
 		RET

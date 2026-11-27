@@ -19,6 +19,8 @@ U0 ArmBoardInit()
       arm_board.name="QEMU virt";
       arm_board.uart_base=0x09000000;
       arm_board.rtc_base=0x09010000;
+      arm_board.gicd_base=0x08000000;
+      arm_board.gicc_base=0x08010000;
       arm_board.has_psci=TRUE;
       break;
     case BOARD_RPI3: //BCM2837: Pi 3B/3B+/3A+, Zero 2 W
@@ -27,6 +29,7 @@ U0 ArmBoardInit()
       arm_board.uart_base=0x3F201000;
       arm_board.uart_clk=48000000;
       arm_board.mbox_base=0x3F00B880;
+      arm_board.local_intc=0x40000000;
       break;
     case BOARD_RPI4: //BCM2711
       arm_board.name="Raspberry Pi 4";
@@ -34,12 +37,16 @@ U0 ArmBoardInit()
       arm_board.uart_base=0xFE201000;
       arm_board.uart_clk=48000000;
       arm_board.mbox_base=0xFE00B880;
+      arm_board.gicd_base=0xFF841000; //GIC-400
+      arm_board.gicc_base=0xFF842000;
       break;
     case BOARD_RPI5: //BCM2712. The debug UART is on the 3-pin header.
       arm_board.name="Raspberry Pi 5";
       arm_board.periph_base=0x107C000000;
       arm_board.uart_base=0x107D001000;
       arm_board.mbox_base=0x107C013880;
+      arm_board.gicd_base=0x107FFF9000; //GIC-400
+      arm_board.gicc_base=0x107FFFA000;
       break;
     default:
       arm_board.name="Unknown";

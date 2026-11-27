@@ -15,8 +15,9 @@ and only the x86-specific parts get ARM64 versions.
 | Boot: Image header, EL3/EL2 to EL1, relocation, MMU, vectors (`Arm64/KStart.TC`) | Working on QEMU virt, raspi3b, raspi4b |
 | Memory: block pools, heaps, MAlloc/Free, RAM from the device tree or Pi mailbox | Working |
 | Tasks: Adam task, Spawn, Yield/Sleep, task exit, try/catch/throw | Working (one core) |
-| Kernel files in the ARM64 build | All of `Kernel.PRJ` except KInts, PCIBIOS and the PS/2 and IDE drivers (see the checklist) |
-| Interrupts, timer IRQ, framebuffer, storage, input, more cores | Not started |
+| Interrupts: IRQ entry, GICv2 (virt, Pi 4/5), BCM2836 local intc (Pi 3), timer IRQ at 1000 Hz, idle WFI | Working |
+| Kernel files in the ARM64 build | All of `Kernel.PRJ` except PCIBIOS and the PS/2 and IDE drivers (see the checklist) |
+| Framebuffer, storage, input, more cores, faults into the debugger | Not started |
 | Compiler running *on* ARM64 (JIT) | Not started |
 
 The ARM64 kernel boots on QEMU's `virt` machine and on the emulated Raspberry Pi 3 and 4. It finds
@@ -24,7 +25,11 @@ RAM, sets up the heaps and the Adam task, and runs its tests:
 - a code generator self test;
 - MAlloc/Free;
 - try/catch;
+- the timer interrupt (100 ticks in 100 ms);
 - two spawned tasks that print, sleep and exit.
+
+While nothing is ready to run, the idle task sleeps in `WFI` until the next interrupt, as x86 does
+with `HLT`.
 
 Then it starts a small serial monitor (`h` help, `k` tasks, `m` memory, `t` self test, `r` reboot,
 `o` power off). Kernel `Print` output (and anything else through `RawPutChar`) goes to the serial
@@ -105,7 +110,12 @@ Fs (the current `CTask`) is in TPIDR_EL1 and Gs (the current `CCPU`) in TPIDRRO_
 register slots hold the ARM64 registers the x86 ones map to. `rflags` keeps the x86 format, with
 bit 9 meaning interrupts are on, so shared code that saves and restores flags works unchanged:
 `GetRFlags`/`SetRFlags` translate to and from DAIF, and inside functions the x86 one-liners `CLI`,
-`STI`, `PUSHFD`, `POPFD`, `PAUSE` and `HLT` assemble to their ARM64 equivalents. Calls to symbols
+`STI`, `PUSHFD`, `POPFD`, `PAUSE` and `HLT` assemble to their ARM64 equivalents.
+
+IRQs work like x86's `IRQ_TIMER`: the interrupted code's registers go into a frame on its own stack,
+the handler runs, and then the scheduler runs starting at the interrupted task, which normally just
+continues. If the idle task was interrupted, the scheduler starts at Seth instead. A task resumed
+later returns through `ARM64_IRQ_RESUME`, which restores the frame. Calls to symbols
 x86 imports at load time (from the compiler, for example) go to `ArmImportTrap`, which reports the
 caller.
 
@@ -194,7 +204,7 @@ ARM64 asm replacements keep the x86 labels, so the `_extern` declarations stay a
 | KMisc, KDate, Display, KDbg | PIT, HPET, CMOS, VGA ports, CR2, `INT` | **Done:** generic timer for HPET, PL031 RTC (virt), serial `RawPutChar`, FAR_EL1, `ArmPanic` |
 | SerialDev/Keyboard, Mouse | PS/2 | to do: `Arm64/Input` has stand-ins; serial, virtio-input, USB |
 | BlkDev/DskATA, DskATAId | IDE | to do: `Arm64/Ata` has stand-ins; virtio-blk (virt), SD card (Pi) |
-| KInts | IDT, PIC | to do: GIC (virt, Pi 4) / BCM2836 local intc (Pi 3), generic timer IRQ |
+| KInts | IDT, PIC, IRQ_TIMER | **Done:** `Arm64/KInts` and the IRQ path in `Arm64/KStart`. GICv2 or BCM2836 local intc; generic timer IRQ; `IntEntrySet` installs TerryC handlers. CPU faults still go to a crash report, not the debugger |
 | PCIBIOS | BIOS32 | to do: PCIe ECAM from the device tree (milestone 2) |
 | KMain | VBE, PIT, devices | **Partly done:** `Arm64/KMain`; framebuffer, interrupts and drives to do |
 | All other files | none | shared, in the ARM64 build |
@@ -208,8 +218,8 @@ Compiler features still missing on ARM64:
 
 The suggested order:
 
-1. Interrupts and the timer IRQ.
-2. The framebuffer and the Anokos terminal.
+1. The framebuffer and the Anokos terminal.
+2. Faults into the debugger (`Fault2`).
 3. Serial/virtio input.
 4. Block devices and RedSea.
 5. More cores.

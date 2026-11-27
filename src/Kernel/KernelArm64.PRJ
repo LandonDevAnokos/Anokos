@@ -54,7 +54,7 @@
 #include "FontCyrillic"
 #include "StrB"
 #include "KHashA"
-//KInts: x86 interrupts (IDT, PIC); ARM64 vectors are in Arm64/KStart.
+#include "KInts"
 #include "KDataTypes"
 #include "Compress"
 #include "KHashB"

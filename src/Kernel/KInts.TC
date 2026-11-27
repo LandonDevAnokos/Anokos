@@ -1,3 +1,6 @@
+#ifdef ARCH_ARM64
+#include "/Kernel/Arm64/KInts"
+#else
 asm {
 INT_MP_CRASH_ADDR:: //Forward reference to work around compiler
 	DU32	&IntMPCrash;
@@ -213,3 +216,4 @@ I have no idea why I got a IRQ 0x27.
   IntEntrySet(I_DBG,&dbg.int_fault_code[7*I_DBG]);
   POPFD
 }
+#endif

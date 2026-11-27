@@ -18,6 +18,8 @@ _extern _ARM_SCTLR	I64 ArmSctlr();	//System control register
 _extern _ARM_CNTFRQ	I64 ArmCntFrq(); //Generic timer frequency
 _extern _ARM_CNTPCT	I64 ArmCntPct(); //Generic timer count
 _extern _ARM_WFI	U0 ArmWfi();	//Wait for interrupt
+_extern _ARM_CNTP_CVAL	U0 ArmCntpCval(I64 cval); //Physical timer compare value
+_extern _ARM_CNTP_CTL	U0 ArmCntpCtl(I64 ctl); //Physical timer control
 _extern _ARM_DSB	U0 ArmDsb();	//Data synchronization barrier
 _extern _ARM_HVC	I64 ArmHvc(I64 fn,I64 a1=0,I64 a2=0,I64 a3=0);
 _extern _ARM_SET_FS	U0 ArmSetFs(CTask *task);
@@ -49,6 +51,9 @@ public class CArmBoard
   U8	*mbox_base;	//VideoCore mailbox (Raspberry Pi)
   Bool	has_psci;
   U8	*rtc_base;	//PL031 real-time clock, NULL if none
+  U8	*gicd_base,	//GICv2 distributor (QEMU virt, Pi 4, Pi 5)
+	*gicc_base,	//GICv2 CPU interface
+	*local_intc;	//BCM2836 per-core interrupt controller (Pi 3)
 };
 
 #help_index ""

@@ -8,17 +8,22 @@
 //rbp is X29, rsp is SP, rip is the resume address. rflags keeps the x86
 //format (bit 9 set: interrupts on), see $LK,"GetRFlags",A="MN:GetRFlags"$.
 //
+//An IRQ resumes through ARM64_IRQ_RESUME (see $LK,"ARM64_IRQ",A="FF:::/Kernel/Arm64/KStart.TC,ARM64_IRQ"$).
+//
 //Not done yet on ARM64: the <CTRL-ALT-key> events (there's no keyboard
 //driver yet), breakpoints and saving FP/SIMD registers (TerryC code
 //keeps no FP values in registers across a call, so Yield needs none).
 //X6 plays the part of x86 RSI: the task being looked at. X7 holds the
 //jiffies count while a task is chosen (its own X7 is saved by then).
 
+Bool arm_timer_irq_on; //The timer IRQ counts jiffies ($LK,"IntInit2",A="MN:IntInit2"$)
+
 I64 ArmJiffiesUpdate()
-{//Until the timer interrupt is converted, jiffies come from the generic
-//timer: called on every task switch and while idle. Returns jiffies.
-  I64 frq=ArmCntFrq,t;
-  if (frq) {
+{//Called on every task switch and while idle. Returns jiffies. Before the
+//timer IRQ runs (or on a board where it doesn't), jiffies come from the
+//generic timer's count.
+  I64 frq,t;
+  if (!arm_timer_irq_on && (frq=ArmCntFrq)) {
     t=ArmCntPct;
     cnts.jiffies=t/frq*JIFFY_FREQ+t%frq*JIFFY_FREQ/frq;
   }
@@ -26,8 +31,14 @@ I64 ArmJiffiesUpdate()
 }
 
 I64 ArmIdle()
-{//Nothing is ready to run. Returns jiffies.
-  PAUSE
+{//Nothing is ready to run. Like x86 (STI, HLT at SYS_IDLE_PT), sleep
+//until an interrupt; the IRQ path then goes back to Seth.
+  if (arm_timer_irq_on) {
+    STI
+    HLT	//WFI on ARM64
+    CLI
+  } else
+    PAUSE
   return ArmJiffiesUpdate;
 }
 

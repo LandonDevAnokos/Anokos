@@ -237,7 +237,7 @@ U0 ArmMonitor()
 	"m memory, k tasks\n> ";
   while (TRUE) {
     if ((ch=ArmSerGetChar)<0) {
-      Yield;
+      Sleep(10); //Lets the idle task sleep with WFI
       goto mon_next;
     }
     '' ch;
@@ -268,6 +268,8 @@ U0 ArmMonitor()
       case 'k':
 	"\nTasks on CPU%d:\n",Gs->num;
 	ArmTaskRep;
+	"Jiffies:%d IRQs:%d spurious:%d idle hits:%d\n",cnts.jiffies,
+	      arm_irq_cnt,arm_irq_spurious,Gs->idle_pt_hits;
 	break;
       case 'i':
 	ArmBanner;
@@ -368,9 +370,16 @@ U0 KMainArm64B()
   TaskDerivedValsUpdate;
   SysDefinesLoad;
   Core0Init;
-  BlkDevsInitAll; //No drives yet: there are no ARM64 storage drivers
+  IntInit1;
 
   LBts(&sys_run_level,RLf_RAW);
+  IntsInit;
+  SetRFlags(RFLAGG_NORMAL); //Enable IRQs
+  IntInit2;
+  LBts(&sys_run_level,RLf_INTERRUPTS);
+  TimeCal;
+  BlkDevsInitAll; //No drives yet: there are no ARM64 storage drivers
+
   "\nAnokos ARM64 (TempleOS V%5.3f base)\t%D %T\n",
 	sys_os_version,sys_compile_time,sys_compile_time;
   "Now: %D %T\n",Now,Now;
@@ -397,6 +406,22 @@ U0 KMainArm64B()
     fails++;
   } else
     "passed\n";
+
+  "Timer IRQ test: ";
+  if (!arm_timer_irq_on) {
+    "FAILED (no timer interrupts; jiffies come from the counter)\n";
+    fails++;
+  } else {
+    i=Gs->total_jiffies;
+    Sleep(100);
+    i=Gs->total_jiffies-i;
+    if (90<=i<=150)
+      "passed (%d ticks in 100 mS, %d IRQs)\n",i,arm_irq_cnt;
+    else {
+      "FAILED (%d ticks in 100 mS)\n",i;
+      fails++;
+    }
+  }
 
   "Task test:\n";
   arm_task_runs=0;
